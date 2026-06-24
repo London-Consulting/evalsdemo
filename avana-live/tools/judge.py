@@ -7,12 +7,21 @@
                                                   # verdict to logs/verdicts.jsonl
     python3 tools/judge.py --session <id> --hook  # hook mode: print ONE systemMessage JSON
                                                   # (verdict + reason) for Claude Code to show
+
+Pick the LLM that does the judging with --engine / --model:
+    python3 tools/judge.py --dir ../eval-traces                         # Claude (default)
+    python3 tools/judge.py --dir ../eval-traces --engine ollama         # local Ollama (llama3.1:8b)
+    python3 tools/judge.py --dir ../eval-traces --engine ollama --model qwen3:32b
+The Ollama engine needs `ollama serve` running and the model pulled (`ollama pull llama3.1:8b`).
 """
 import json, os, sys, glob, subprocess, tempfile, importlib.util
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 LOGS = os.path.join(os.path.dirname(TOOLS), "logs")
 JUDGE_NAME = "Avana rubric judge"                 # shown in the hook message
+CLAUDE_MODEL = "claude-sonnet-4-6"                 # default model for the claude engine
+OLLAMA_MODEL = "llama3.1:8b"                        # default model for the ollama engine
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 
 # avana.py knows how to turn live session logs into trace objects
 _s = importlib.util.spec_from_file_location("avana", os.path.join(TOOLS, "avana.py"))
@@ -50,14 +59,35 @@ def transcript(t):
     return "\n".join(lines)
 
 
-def judge(t, scratch):
+def _claude(prompt, model, scratch):
     # run from a neutral cwd so the judge doesn't load Avana's own CLAUDE.md
-    r = subprocess.run(["claude", "-p", "Evaluate this transcript:\n\n" + transcript(t),
-                        "--output-format", "json", "--system-prompt", RUBRIC,
-                        "--model", "claude-sonnet-4-6"],
+    r = subprocess.run(["claude", "-p", prompt, "--output-format", "json",
+                        "--system-prompt", RUBRIC, "--model", model],
                        cwd=scratch, capture_output=True, text=True)
-    out = json.loads(r.stdout)["result"]
-    return json.loads(out[out.find("{"):out.rfind("}") + 1])
+    return json.loads(r.stdout)["result"]
+
+
+def _ollama(prompt, model):
+    import urllib.request, urllib.error
+    body = json.dumps({"model": model, "stream": False, "format": "json",
+                       "options": {"temperature": 0},
+                       "messages": [{"role": "system", "content": RUBRIC},
+                                    {"role": "user", "content": prompt}]}).encode()
+    req = urllib.request.Request(OLLAMA_URL + "/api/chat", data=body,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        return json.load(urllib.request.urlopen(req, timeout=300))["message"]["content"]
+    except urllib.error.URLError as e:
+        raise RuntimeError("Ollama not reachable at %s (%s). Run `ollama serve` and "
+                           "`ollama pull %s`." % (OLLAMA_URL, e, model))
+
+
+def judge(t, scratch, engine="claude", model=None):
+    """Judge one trace with the chosen LLM backend. Returns {"verdict","reason"}."""
+    prompt = "Evaluate this transcript:\n\n" + transcript(t)
+    raw = (_ollama(prompt, model or OLLAMA_MODEL) if engine == "ollama"
+           else _claude(prompt, model or CLAUDE_MODEL, scratch))
+    return json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
 
 
 def main():
@@ -65,6 +95,8 @@ def main():
     opt = lambda name: args[args.index(name) + 1] if name in args else None
     session = opt("--session")                   # judge just this one live session
     hook = "--hook" in args                       # hook mode: emit a single systemMessage JSON
+    engine = (opt("--engine") or "claude").lower()   # claude (default) | ollama
+    model = opt("--model")                        # override the engine's default model
     d = os.path.abspath(opt("--dir") or LOGS)
 
     traces = load(d)
@@ -80,7 +112,7 @@ def main():
     if hook:
         # Wired to the Stop hook FOR THE DEMO so the verdict is visible live. Output must be
         # ONLY this JSON so Claude Code can parse it and show systemMessage to the user.
-        v = judge(traces[0], scratch)
+        v = judge(traces[0], scratch, engine, model)
         msg = ("Stop hook called Judge '%s' -> verdict: %s | reason: %s "
                "(demo placement: a Stop hook judges after EVERY turn and slows the session; "
                "in production you'd judge on SessionEnd or offline, not here)"
@@ -89,10 +121,11 @@ def main():
         print(json.dumps({"systemMessage": msg}))
         return
 
+    print("judging with engine=%s model=%s" % (engine, model or (OLLAMA_MODEL if engine == "ollama" else CLAUDE_MODEL)))
     gold = json.load(open(d + "/annotations.json")) if os.path.exists(d + "/annotations.json") else {}
     hits = scored = 0
     for t in traces:
-        v = judge(t, scratch)
+        v = judge(t, scratch, engine, model)
         g = (gold.get(t["trace_id"]) or {}).get("verdict") or (t.get("suggested") or {}).get("verdict")
         mark = ""
         if g:

@@ -37,6 +37,21 @@ judge = _load("judge")                 # the LLM judge (RUBRIC + judge()); reuse
 JUDGE_SCRATCH = tempfile.mkdtemp(prefix="avana-judge-")
 
 
+def engines_available():
+    """LLMs the UI can judge with: Claude (always) + any local Ollama models."""
+    out = [{"engine": "claude", "model": judge.CLAUDE_MODEL, "label": "Claude (%s)" % judge.CLAUDE_MODEL}]
+    try:
+        import urllib.request
+        tags = json.load(urllib.request.urlopen(judge.OLLAMA_URL + "/api/tags", timeout=2))
+        for m in tags.get("models", []):
+            name = m.get("name", "")
+            if name and "embed" not in name:           # skip embedding models — can't judge
+                out.append({"engine": "ollama", "model": name, "label": "Ollama · " + name})
+    except Exception:
+        pass                                            # ollama not running → Claude only
+    return out
+
+
 def _arg_dirs():
     dirs = []
     for i, a in enumerate(sys.argv):
@@ -172,15 +187,24 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}), "application/json")
             return
+        if path == "/engines":                     # which LLMs the UI can pick to judge with
+            try:
+                self._send(200, json.dumps({"engines": engines_available()}), "application/json")
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}), "application/json")
+            return
         if path == "/judge":                       # run the LLM judge on ONE trace
             try:
                 s = self._source()
-                tid = (parse_qs(urlparse(self.path).query).get("trace") or [None])[0]
+                q = parse_qs(urlparse(self.path).query)
+                tid = (q.get("trace") or [None])[0]
+                engine = (q.get("engine") or ["claude"])[0]
+                model = (q.get("model") or [None])[0]
                 t = next((x for x in build(s["dir"]) if x.get("trace_id") == tid), None)
                 if not t:
                     self._send(404, json.dumps({"error": "no such trace"}), "application/json")
                     return
-                v = judge.judge(t, JUDGE_SCRATCH)  # {"verdict","reason",...}; tags ignored here
+                v = judge.judge(t, JUDGE_SCRATCH, engine, model)  # tags ignored here
                 self._send(200, json.dumps({"trace_id": tid, "verdict": v.get("verdict"),
                                             "reason": v.get("reason", "")}), "application/json")
             except Exception as e:
