@@ -242,17 +242,38 @@
         + '<td><span class="evjudge vwait">—</span><div class="evreason evjreason"></div></td>'
         + '<td class="evmatch vwait">…</td></tr>';
     }).join('');
-    wrap.innerHTML = '<div class="evalhead"><button class="btn" id="runEval">▶ Run judge on all</button>'
+    wrap.innerHTML = '<div class="evalhead"><span class="badge">AI:</span>'
+      + '<select class="btn" id="engineSel"><option>loading…</option></select>'
+      + '<button class="btn" id="runEval">▶ Run judge on all</button>'
       + '<span class="badge" id="evalScore"></span>'
       + '<span class="badge">✓ match = green · ✗ mismatch = red</span></div>'
       + '<table class="evaltable"><thead><tr><th>Trace</th><th>Golden</th><th>Judge</th><th>Match</th></tr></thead><tbody>'
       + rows + '</tbody></table>';
     document.getElementById('runEval').onclick = runEvalAll;
+    populateEngines();
+  }
+
+  // Fill the AI dropdown from /engines (Claude + any local Ollama models). Cached after first load.
+  var ENGINES = null;
+  function populateEngines(){
+    var sel = document.getElementById('engineSel'); if(!sel) return;
+    function fill(list){
+      sel.innerHTML = (list && list.length ? list : [{engine:'claude',model:'',label:'Claude'}])
+        .map(function(e){ return '<option value="' + esc(e.engine) + '|' + esc(e.model||'') + '">' + esc(e.label) + '</option>'; })
+        .join('');
+    }
+    if(ENGINES){ fill(ENGINES); return; }
+    fetch('/engines', {cache:'no-store'}).then(function(r){ return r.json(); })
+      .then(function(d){ ENGINES = d.engines || []; fill(ENGINES); })
+      .catch(function(){ fill(null); });
   }
 
   function runEvalAll(){
     var score = document.getElementById('evalScore');
     var btn = document.getElementById('runEval'); btn.disabled = true; btn.textContent = 'Running…';
+    var sel = document.getElementById('engineSel');
+    var em = ((sel && sel.value) || 'claude|').split('|');   // [engine, model]
+    var engQ = '&engine=' + encodeURIComponent(em[0] || 'claude') + (em[1] ? '&model=' + encodeURIComponent(em[1]) : '');
     var idx=0, finished=0, match=0, scored=0, CONC=4;
     function update(){
       score.textContent = 'agreement: ' + match + '/' + scored
@@ -275,7 +296,7 @@
       if(idx >= T.length) return;
       var tr = T[idx++];
       var u = '/judge' + (currentSource ? ('?source=' + encodeURIComponent(currentSource) + '&') : '?')
-            + 'trace=' + encodeURIComponent(tr.trace_id);
+            + 'trace=' + encodeURIComponent(tr.trace_id) + engQ;
       fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
         .then(function(res){ fill(tr, res.verdict, res.reason); })
         .catch(function(){ fill(tr, 'error', ''); })
