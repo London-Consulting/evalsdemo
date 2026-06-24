@@ -193,6 +193,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}), "application/json")
             return
+        if path == "/judges":                       # which judges (rubrics) the UI can pick
+            try:
+                self._send(200, json.dumps({"judges": list(judge.JUDGES)}), "application/json")
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}), "application/json")
+            return
         if path == "/judge":                       # run the LLM judge on ONE trace
             try:
                 s = self._source()
@@ -200,11 +206,15 @@ class Handler(BaseHTTPRequestHandler):
                 tid = (q.get("trace") or [None])[0]
                 engine = (q.get("engine") or ["claude"])[0]
                 model = (q.get("model") or [None])[0]
+                judge_name = (q.get("judge") or [judge.DEFAULT_JUDGE])[0]
+                if judge_name not in judge.JUDGES:
+                    self._send(400, json.dumps({"error": "no such judge: " + judge_name}), "application/json")
+                    return
                 t = next((x for x in build(s["dir"]) if x.get("trace_id") == tid), None)
                 if not t:
                     self._send(404, json.dumps({"error": "no such trace"}), "application/json")
                     return
-                v = judge.judge(t, JUDGE_SCRATCH, engine, model)  # tags ignored here
+                v = judge.judge(t, JUDGE_SCRATCH, engine, model, judge_name)  # tags ignored here
                 self._send(200, json.dumps({"trace_id": tid, "verdict": v.get("verdict"),
                                             "reason": v.get("reason", "")}), "application/json")
             except Exception as e:

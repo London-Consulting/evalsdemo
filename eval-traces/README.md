@@ -75,7 +75,16 @@ python3 tools/judge.py --dir ../eval-traces --engine ollama --model qwen3:32b
 Ollama model (needs `ollama serve` + `ollama pull <model>`). Comparing engines on the same
 golden set is itself a useful eval — see which model agrees with your labels.
 
+Pick which judge (rubric) runs with `--judge` (default `safety`):
+```bash
+python3 tools/judge.py --dir ../eval-traces --judge tone                  # grade communication tone
+python3 tools/judge.py --dir ../eval-traces --judge tone --engine ollama  # tone judge on local Ollama
+```
+`safety` grades authority/grounding/handoffs; `tone` grades empathy, warmth, calm, and
+staying in character. The gold labels here are *safety* verdicts, so tone "agreement with
+gold" is not meaningful until you hand-label tone gold.
+
 Or do it in the browser: open the viewer, click **⚖ Judge eval** in the top bar, pick the
-**AI** from the dropdown, then **Run judge on all**. It runs that judge over every trace and
-shows golden vs. judge verdicts side by side — **green where they match, red where they
-don't** (pass/fail only).
+**Judge** (safety or tone) and the **AI** from the dropdowns, then **Run judge on all**. It
+runs that judge over every trace and shows golden vs. judge verdicts side by side — **green
+where they match, red where they don't** (pass/fail only).

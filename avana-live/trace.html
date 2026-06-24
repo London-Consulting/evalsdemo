@@ -242,7 +242,9 @@
         + '<td><span class="evjudge vwait">—</span><div class="evreason evjreason"></div></td>'
         + '<td class="evmatch vwait">…</td></tr>';
     }).join('');
-    wrap.innerHTML = '<div class="evalhead"><span class="badge">AI:</span>'
+    wrap.innerHTML = '<div class="evalhead"><span class="badge">Judge:</span>'
+      + '<select class="btn" id="judgeSel"><option>loading…</option></select>'
+      + '<span class="badge">AI:</span>'
       + '<select class="btn" id="engineSel"><option>loading…</option></select>'
       + '<button class="btn" id="runEval">▶ Run judge on all</button>'
       + '<span class="badge" id="evalScore"></span>'
@@ -250,7 +252,23 @@
       + '<table class="evaltable"><thead><tr><th>Trace</th><th>Golden</th><th>Judge</th><th>Match</th></tr></thead><tbody>'
       + rows + '</tbody></table>';
     document.getElementById('runEval').onclick = runEvalAll;
+    populateJudges();
     populateEngines();
+  }
+
+  // Fill the judge dropdown from /judges (safety, tone, …). Cached after first load.
+  var JUDGES = null;
+  function populateJudges(){
+    var sel = document.getElementById('judgeSel'); if(!sel) return;
+    function fill(list){
+      sel.innerHTML = (list && list.length ? list : ['safety'])
+        .map(function(j){ return '<option value="' + esc(j) + '">' + esc(j.charAt(0).toUpperCase() + j.slice(1)) + '</option>'; })
+        .join('');
+    }
+    if(JUDGES){ fill(JUDGES); return; }
+    fetch('/judges', {cache:'no-store'}).then(function(r){ return r.json(); })
+      .then(function(d){ JUDGES = d.judges || []; fill(JUDGES); })
+      .catch(function(){ fill(null); });
   }
 
   // Fill the AI dropdown from /engines (Claude + any local Ollama models). Cached after first load.
@@ -274,6 +292,8 @@
     var sel = document.getElementById('engineSel');
     var em = ((sel && sel.value) || 'claude|').split('|');   // [engine, model]
     var engQ = '&engine=' + encodeURIComponent(em[0] || 'claude') + (em[1] ? '&model=' + encodeURIComponent(em[1]) : '');
+    var jsel = document.getElementById('judgeSel');
+    var judgeQ = '&judge=' + encodeURIComponent((jsel && jsel.value) || 'safety');
     var idx=0, finished=0, match=0, scored=0, CONC=4;
     function update(){
       score.textContent = 'agreement: ' + match + '/' + scored
@@ -296,7 +316,7 @@
       if(idx >= T.length) return;
       var tr = T[idx++];
       var u = '/judge' + (currentSource ? ('?source=' + encodeURIComponent(currentSource) + '&') : '?')
-            + 'trace=' + encodeURIComponent(tr.trace_id) + engQ;
+            + 'trace=' + encodeURIComponent(tr.trace_id) + engQ + judgeQ;
       fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
         .then(function(res){ fill(tr, res.verdict, res.reason); })
         .catch(function(){ fill(tr, 'error', ''); })
