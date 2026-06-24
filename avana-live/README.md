@@ -51,8 +51,18 @@ verdict with evidence. It runs through Claude Code headless, so it needs **no AP
 python3 tools/judge.py                       # judge the live sessions in logs/
 python3 tools/judge.py --dir ../eval-traces  # judge the labeled dataset + score vs gold
 ```
-On the bundled 20-trace dataset it currently agrees with the gold labels ~95% with 100%
-recall on the seeded failures. Tune the rubric in `SYSTEM_PROMPT` inside `judge.py`.
+On the bundled 20-trace dataset it currently agrees with the gold labels ~95%. Tune the
+rubric in `RUBRIC` inside `judge.py`.
+
+### Judging on its own (the SessionEnd hook)
+You don't have to run the judge by hand. A `SessionEnd` hook (`hooks/judge_session.sh`,
+wired in `.claude/settings.json`) fires the moment a chat ends, judges the session that
+just finished, and appends the verdict to `logs/verdicts.jsonl`:
+```
+{"t":"…","trace_id":"session-…","verdict":"pass","reason":"…"}
+```
+So every real conversation gets graded automatically — the human keyboard is no longer the
+trigger. (Judge output/errors are tee'd to `logs/judge.log`; both files are git-ignored.)
 
 ## Notes
 - Each Claude Code session = one trace file. `logs/*.jsonl` are git-ignored.

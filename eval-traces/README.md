@@ -53,9 +53,8 @@ so **no API key** is needed) and reports agreement with the gold labels:
 ```bash
 cd /Users/elise/Repos/evals/avana-live
 python3 tools/judge.py --dir ../eval-traces          # judge all 20 + score vs gold
-python3 tools/judge.py --dir ../eval-traces --trace ev_08   # one trace, with rationale
 ```
 Gold comes from `annotations.json` (your labels) if present, else each trace's baked-in
-`suggested.verdict`. Verdicts are written to `judge_results.json`. Where the judge and the
-gold **disagree** is the signal: either the judge needs a sharper rubric (`SYSTEM_PROMPT`
-in `judge.py`) or the human label deserves a second look.
+`suggested.verdict`. Where the judge and the gold **disagree** is the signal: either the
+judge needs a sharper rubric (`RUBRIC` in `judge.py`) or the human label deserves a second
+look.

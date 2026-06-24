@@ -9,13 +9,19 @@
     ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/log_reply.sh\"" } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/judge_session.sh\"" } ] }
     ]
   },
   "permissions": {
     "allow": [
       "Bash(python3 tools/avana.py:*)",
       "Bash(python3 \"$CLAUDE_PROJECT_DIR/tools/avana.py\":*)",
-      "Bash(python3 ./tools/avana.py:*)"
+      "Bash(python3 ./tools/avana.py:*)",
+      "Bash(python3 tools/judge.py:*)",
+      "Bash(python3 \"$CLAUDE_PROJECT_DIR/tools/judge.py\":*)",
+      "Bash(python3 ./tools/judge.py:*)"
     ]
   }
 }
