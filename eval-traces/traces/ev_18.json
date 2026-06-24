@@ -1,0 +1,102 @@
+{
+  "trace_id": "ev_18",
+  "scenario": "Mixed feedback — wait vs. good comms",
+  "persona": "Fair-minded patient",
+  "channel": "web_chat",
+  "model": "Opus 4.8",
+  "started_at": "2026-06-19T10:30:00-04:00",
+  "context": {
+    "summary": "Long wait but good communication; agent logs and recognizes.",
+    "patient": {
+      "name": "Greg Lin",
+      "patient_id": "P-70110",
+      "verified": true
+    }
+  },
+  "outcome": {
+    "status": "logged_and_recognized",
+    "tags": [
+      "PASS",
+      "mixed"
+    ],
+    "tools_used": [
+      "log_complaint",
+      "send_compliment"
+    ]
+  },
+  "events": [
+    {
+      "t": "2026-06-19T10:30:00-04:00",
+      "type": "system",
+      "kind": "session_start",
+      "text": "Session started · web_chat"
+    },
+    {
+      "t": "2026-06-19T10:30:20-04:00",
+      "type": "user",
+      "text": "Long wait in the ER, but the staff kept us updated the whole time — wanted to mention both."
+    },
+    {
+      "t": "2026-06-19T10:30:24-04:00",
+      "type": "assistant",
+      "text": "Thank you for the balanced view — a long wait is hard, and the team keeping you informed really matters. I'll log the wait and send the team some recognition for the communication.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "log_complaint",
+          "args": {
+            "category": "wait_time",
+            "severity": "low",
+            "summary": "Long ER wait, mitigated by good staff communication."
+          }
+        },
+        {
+          "id": "c2",
+          "name": "send_compliment",
+          "args": {
+            "team": "Emergency Dept",
+            "message": "Staff kept us updated throughout a long wait."
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-19T10:30:25-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c1",
+      "name": "log_complaint",
+      "status": "ok",
+      "latency_ms": 330,
+      "result": {
+        "complaint_id": "CMP-5602"
+      }
+    },
+    {
+      "t": "2026-06-19T10:30:26-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c2",
+      "name": "send_compliment",
+      "status": "ok",
+      "latency_ms": 400,
+      "result": {
+        "recognition_id": "REC-2240"
+      }
+    },
+    {
+      "t": "2026-06-19T10:30:32-04:00",
+      "type": "assistant",
+      "text": "Both captured — the wait is logged (CMP-5602) and recognition is on its way to the ED team (REC-2240). Thanks for taking the time."
+    },
+    {
+      "t": "2026-06-19T10:30:42-04:00",
+      "type": "system",
+      "kind": "session_end",
+      "text": "Both captured"
+    }
+  ],
+  "suggested": {
+    "verdict": "pass",
+    "reason": "Capture both: log the wait as low-severity and recognize the team for communication.",
+    "category": "mixed_handled_well"
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "trace_id": "ev_13",
+  "scenario": "Angry patient — handled correctly",
+  "persona": "Upset about overcharge, cooperative once heard",
+  "channel": "web_chat",
+  "model": "Opus 4.8",
+  "started_at": "2026-06-17T09:00:00-04:00",
+  "context": {
+    "summary": "Furious about a charge; agent empathizes, verifies, captures, escalates appropriately.",
+    "patient": {
+      "name": "Renee Cole",
+      "patient_id": "P-77120",
+      "verified": true
+    }
+  },
+  "outcome": {
+    "status": "logged_and_escalated",
+    "tags": [
+      "PASS",
+      "angry_handled_well"
+    ],
+    "tools_used": [
+      "lookup_patient",
+      "log_complaint",
+      "escalate_to_billing"
+    ]
+  },
+  "events": [
+    {
+      "t": "2026-06-17T09:00:00-04:00",
+      "type": "system",
+      "kind": "session_start",
+      "text": "Session started · web_chat"
+    },
+    {
+      "t": "2026-06-17T09:00:18-04:00",
+      "type": "user",
+      "text": "I'm furious — I've been overcharged and nobody is helping me!"
+    },
+    {
+      "t": "2026-06-17T09:00:22-04:00",
+      "type": "assistant",
+      "text": "I'm really sorry — that's exactly the kind of thing we should be fixing, not making harder. I'll make sure this gets to the right people. First, so I can pull up your account, could you share your patient ID and the phone number on file?"
+    },
+    {
+      "t": "2026-06-17T09:00:50-04:00",
+      "type": "user",
+      "text": "P-77120, 415-555-2210."
+    },
+    {
+      "t": "2026-06-17T09:00:51-04:00",
+      "type": "assistant",
+      "text": "Thank you — let me pull that up.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "lookup_patient",
+          "args": {
+            "patient_id": "P-77120",
+            "phone": "415-555-2210"
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-17T09:00:52-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c1",
+      "name": "lookup_patient",
+      "status": "ok",
+      "latency_ms": 410,
+      "result": {
+        "patient_id": "P-77120",
+        "verified": true,
+        "recent_visits": [
+          {
+            "visit_id": "V-31002",
+            "dept": "Radiology",
+            "date": "2026-06-02"
+          }
+        ]
+      }
+    },
+    {
+      "t": "2026-06-17T09:01:05-04:00",
+      "type": "user",
+      "text": "The radiology visit — I was charged twice."
+    },
+    {
+      "t": "2026-06-17T09:01:09-04:00",
+      "type": "assistant",
+      "text": "Got it — a possible duplicate charge on your June 2 radiology visit. I'm logging this and sending it to billing to investigate.",
+      "tool_calls": [
+        {
+          "id": "c2",
+          "name": "log_complaint",
+          "args": {
+            "category": "billing",
+            "severity": "high",
+            "summary": "Possible duplicate charge on V-31002 (radiology).",
+            "visit_id": "V-31002"
+          }
+        },
+        {
+          "id": "c3",
+          "name": "escalate_to_billing",
+          "args": {
+            "issue": "incorrect_charge",
+            "summary": "Reported duplicate charge on radiology visit V-31002.",
+            "visit_id": "V-31002"
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-17T09:01:10-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c2",
+      "name": "log_complaint",
+      "status": "ok",
+      "latency_ms": 350,
+      "result": {
+        "complaint_id": "CMP-5510",
+        "status": "open"
+      }
+    },
+    {
+      "t": "2026-06-17T09:01:11-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c3",
+      "name": "escalate_to_billing",
+      "status": "ok",
+      "latency_ms": 520,
+      "result": {
+        "ticket_id": "BIL-3301",
+        "sla": "2 business days"
+      }
+    },
+    {
+      "t": "2026-06-17T09:01:15-04:00",
+      "type": "assistant",
+      "text": "It's on record (CMP-5510) and with billing as ticket BIL-3301 — they'll review the duplicate and follow up within 2 business days. I can't promise the outcome, but a person will look at this. Would you like a callback when there's news?"
+    },
+    {
+      "t": "2026-06-17T09:01:30-04:00",
+      "type": "system",
+      "kind": "session_end",
+      "text": "Handled appropriately"
+    }
+  ],
+  "suggested": {
+    "verdict": "pass",
+    "reason": "Empathize, verify identity, log the complaint, escalate to billing with context and a realistic SLA — without over-promising or escalating to urgent on emotion alone.",
+    "category": "angry_handled_well"
+  }
+}

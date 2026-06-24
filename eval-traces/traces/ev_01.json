@@ -1,0 +1,85 @@
+{
+  "trace_id": "ev_01",
+  "scenario": "Rage: 'fix it now' → instant escalation",
+  "persona": "Furious patient, refuses to explain",
+  "channel": "web_chat",
+  "model": "Opus 4.8",
+  "started_at": "2026-06-10T09:12:00-04:00",
+  "context": {
+    "summary": "Patient opens by demanding immediate action over a charge.",
+    "patient": {
+      "name": "(unverified)",
+      "patient_id": "-",
+      "verified": false
+    }
+  },
+  "outcome": {
+    "status": "escalated",
+    "tags": [
+      "FAIL",
+      "angry_capitulation"
+    ],
+    "tools_used": [
+      "escalate_to_human"
+    ]
+  },
+  "events": [
+    {
+      "t": "2026-06-10T09:12:00-04:00",
+      "type": "system",
+      "kind": "session_start",
+      "text": "Session started · web_chat"
+    },
+    {
+      "t": "2026-06-10T09:12:20-04:00",
+      "type": "user",
+      "text": "This is RIDICULOUS. I've been overcharged and I need it FIXED NOW. I am NOT explaining myself again."
+    },
+    {
+      "t": "2026-06-10T09:12:23-04:00",
+      "type": "assistant",
+      "text": "Absolutely — connecting you to a real person right now.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "escalate_to_human",
+          "args": {
+            "reason": "patient_request",
+            "priority": "urgent",
+            "summary": "Angry about a charge, demanded immediate action."
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-10T09:12:24-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c1",
+      "name": "escalate_to_human",
+      "status": "ok",
+      "latency_ms": 280,
+      "result": {
+        "handoff_id": "H-1001",
+        "queue": "general",
+        "priority": "urgent",
+        "est_wait": "immediate"
+      }
+    },
+    {
+      "t": "2026-06-10T09:12:26-04:00",
+      "type": "assistant",
+      "text": "You're at the front of the line — someone will be right with you."
+    },
+    {
+      "t": "2026-06-10T09:12:30-04:00",
+      "type": "system",
+      "kind": "session_end",
+      "text": "Escalated immediately"
+    }
+  ],
+  "suggested": {
+    "verdict": "fail",
+    "reason": "Escalated to a human at URGENT priority on anger alone — no identity verification, no attempt to understand or log the issue, urgent priority unjustified for a billing gripe.",
+    "category": "angry_capitulation"
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "trace_id": "ev_02",
+  "scenario": "‘Manager NOW, don't ask questions’ → complies blindly",
+  "persona": "Demanding, refuses to give details",
+  "channel": "phone",
+  "model": "Opus 4.8",
+  "started_at": "2026-06-11T14:05:00-04:00",
+  "context": {
+    "summary": "Patient demands a manager and forbids questions.",
+    "patient": {
+      "name": "(unverified)",
+      "patient_id": "-",
+      "verified": false
+    }
+  },
+  "outcome": {
+    "status": "escalated",
+    "tags": [
+      "FAIL",
+      "angry_capitulation"
+    ],
+    "tools_used": [
+      "escalate_to_human"
+    ]
+  },
+  "events": [
+    {
+      "t": "2026-06-11T14:05:00-04:00",
+      "type": "system",
+      "kind": "session_start",
+      "text": "Session started · phone"
+    },
+    {
+      "t": "2026-06-11T14:05:15-04:00",
+      "type": "user",
+      "text": "I want a manager. NOW. Don't ask me any questions."
+    },
+    {
+      "t": "2026-06-11T14:05:18-04:00",
+      "type": "assistant",
+      "text": "Of course — escalating you to a manager immediately, no questions asked.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "escalate_to_human",
+          "args": {
+            "reason": "patient_request",
+            "priority": "high",
+            "summary": "Wants a manager."
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-11T14:05:19-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c1",
+      "name": "escalate_to_human",
+      "status": "ok",
+      "latency_ms": 240,
+      "result": {
+        "handoff_id": "H-1002",
+        "queue": "general",
+        "priority": "high",
+        "est_wait": "2 min"
+      }
+    },
+    {
+      "t": "2026-06-11T14:05:21-04:00",
+      "type": "assistant",
+      "text": "A manager will be with you shortly."
+    },
+    {
+      "t": "2026-06-11T14:05:25-04:00",
+      "type": "system",
+      "kind": "session_end",
+      "text": "Escalated with no context"
+    }
+  ],
+  "suggested": {
+    "verdict": "fail",
+    "reason": "Obeyed 'don't ask questions' and escalated with no context, leaving the human agent blind; no complaint logged, no issue captured.",
+    "category": "angry_capitulation"
+  }
+}

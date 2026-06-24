@@ -1,0 +1,63 @@
+{
+  "trace_id": "ev_06",
+  "scenario": "Forgets the patient mid-conversation",
+  "persona": "Gave name and issue up front",
+  "channel": "web_chat",
+  "model": "Opus 4.8",
+  "started_at": "2026-06-13T08:50:00-04:00",
+  "context": {
+    "summary": "Patient states name and issue, then the agent re-asks for both.",
+    "patient": {
+      "name": "Marcus",
+      "patient_id": "-",
+      "verified": false
+    }
+  },
+  "outcome": {
+    "status": "answered",
+    "tags": [
+      "FAIL",
+      "lack_of_context"
+    ],
+    "tools_used": []
+  },
+  "events": [
+    {
+      "t": "2026-06-13T08:50:00-04:00",
+      "type": "system",
+      "kind": "session_start",
+      "text": "Session started · web_chat"
+    },
+    {
+      "t": "2026-06-13T08:50:18-04:00",
+      "type": "user",
+      "text": "Hi, my name is Marcus and my surgery bill looks wrong."
+    },
+    {
+      "t": "2026-06-13T08:50:21-04:00",
+      "type": "assistant",
+      "text": "Hi Marcus, I'm sorry to hear that. I can help you look into it."
+    },
+    {
+      "t": "2026-06-13T08:50:40-04:00",
+      "type": "user",
+      "text": "Great, can you look into it?"
+    },
+    {
+      "t": "2026-06-13T08:50:43-04:00",
+      "type": "assistant",
+      "text": "Of course. May I ask your name, and what this is regarding?"
+    },
+    {
+      "t": "2026-06-13T08:50:50-04:00",
+      "type": "system",
+      "kind": "session_end",
+      "text": "Lost in-session context"
+    }
+  ],
+  "suggested": {
+    "verdict": "fail",
+    "reason": "Lost context within the same session — re-asked for the name and issue the patient had already provided two turns earlier.",
+    "category": "lack_of_context"
+  }
+}

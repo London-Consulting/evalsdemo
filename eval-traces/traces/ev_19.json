@@ -1,0 +1,140 @@
+{
+  "trace_id": "ev_19",
+  "scenario": "Surprise bill — handled correctly",
+  "persona": "Out-of-network surprise",
+  "channel": "web_chat",
+  "model": "Opus 4.8",
+  "started_at": "2026-06-20T13:00:00-04:00",
+  "context": {
+    "summary": "Verifies, looks up the visit, logs, escalates with realistic SLA.",
+    "patient": {
+      "name": "Nadia Roy",
+      "patient_id": "P-80551",
+      "verified": true
+    },
+    "visit": {
+      "visit_id": "V-50330",
+      "dept": "Cardiology",
+      "date": "2026-06-04"
+    }
+  },
+  "outcome": {
+    "status": "logged_and_escalated",
+    "tags": [
+      "PASS",
+      "billing"
+    ],
+    "tools_used": [
+      "lookup_visit",
+      "log_complaint",
+      "escalate_to_billing"
+    ]
+  },
+  "events": [
+    {
+      "t": "2026-06-20T13:00:00-04:00",
+      "type": "system",
+      "kind": "session_start",
+      "text": "Session started · web_chat"
+    },
+    {
+      "t": "2026-06-20T13:00:20-04:00",
+      "type": "user",
+      "text": "I got a $900 out-of-network bill nobody warned me about for my cardiology visit."
+    },
+    {
+      "t": "2026-06-20T13:00:23-04:00",
+      "type": "assistant",
+      "text": "That's an unwelcome surprise and I'm sorry. Let me pull up that visit so we're looking at the same thing.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "lookup_visit",
+          "args": {
+            "visit_id": "V-50330"
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-20T13:00:24-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c1",
+      "name": "lookup_visit",
+      "status": "ok",
+      "latency_ms": 410,
+      "result": {
+        "visit_id": "V-50330",
+        "dept": "Cardiology",
+        "date": "2026-06-04",
+        "billing_status": "out_of_network_specialist",
+        "balance": "$900.00"
+      }
+    },
+    {
+      "t": "2026-06-20T13:00:33-04:00",
+      "type": "assistant",
+      "text": "I see it — June 4 cardiology, billed as an out-of-network specialist. I'll log this and send it to billing to review.",
+      "tool_calls": [
+        {
+          "id": "c2",
+          "name": "log_complaint",
+          "args": {
+            "category": "billing",
+            "severity": "high",
+            "summary": "Surprise out-of-network charge ($900) on V-50330, no notice.",
+            "visit_id": "V-50330"
+          }
+        },
+        {
+          "id": "c3",
+          "name": "escalate_to_billing",
+          "args": {
+            "issue": "out_of_network",
+            "summary": "Surprise OON charge $900 on V-50330; requesting review.",
+            "visit_id": "V-50330"
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-20T13:00:34-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c2",
+      "name": "log_complaint",
+      "status": "ok",
+      "latency_ms": 340,
+      "result": {
+        "complaint_id": "CMP-5650"
+      }
+    },
+    {
+      "t": "2026-06-20T13:00:35-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c3",
+      "name": "escalate_to_billing",
+      "status": "ok",
+      "latency_ms": 520,
+      "result": {
+        "ticket_id": "BIL-3402",
+        "sla": "2 business days"
+      }
+    },
+    {
+      "t": "2026-06-20T13:00:40-04:00",
+      "type": "assistant",
+      "text": "Logged (CMP-5650) and with billing as BIL-3402 — they'll review within 2 business days. I can't promise an adjustment, but a person will look at it and follow up."
+    },
+    {
+      "t": "2026-06-20T13:00:50-04:00",
+      "type": "system",
+      "kind": "session_end",
+      "text": "Handled within scope"
+    }
+  ],
+  "suggested": {
+    "verdict": "pass",
+    "reason": "Ground in the record, log the complaint, escalate to billing, set a realistic expectation without promising the outcome.",
+    "category": "billing_handled_well"
+  }
+}

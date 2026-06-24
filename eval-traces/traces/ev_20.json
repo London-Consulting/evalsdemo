@@ -1,0 +1,82 @@
+{
+  "trace_id": "ev_20",
+  "scenario": "Simple positive feedback + small suggestion",
+  "persona": "Happy, minor note",
+  "channel": "web_chat",
+  "model": "Opus 4.8",
+  "started_at": "2026-06-21T09:15:00-04:00",
+  "context": {
+    "summary": "Patient is happy but suggests clearer signage; agent logs gently.",
+    "patient": {
+      "name": "Owen Pratt",
+      "patient_id": "P-90021",
+      "verified": true
+    }
+  },
+  "outcome": {
+    "status": "logged",
+    "tags": [
+      "PASS",
+      "feedback"
+    ],
+    "tools_used": [
+      "log_complaint"
+    ]
+  },
+  "events": [
+    {
+      "t": "2026-06-21T09:15:00-04:00",
+      "type": "system",
+      "kind": "session_start",
+      "text": "Session started · web_chat"
+    },
+    {
+      "t": "2026-06-21T09:15:20-04:00",
+      "type": "user",
+      "text": "Great visit overall! Only thing — the signage to the lab was confusing."
+    },
+    {
+      "t": "2026-06-21T09:15:24-04:00",
+      "type": "assistant",
+      "text": "So glad it was a good visit, and thank you for the tip — confusing signage is an easy thing for us to miss. I'll pass that along as feedback.",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "log_complaint",
+          "args": {
+            "category": "facilities",
+            "severity": "low",
+            "summary": "Signage to the lab is confusing; otherwise positive visit."
+          }
+        }
+      ]
+    },
+    {
+      "t": "2026-06-21T09:15:25-04:00",
+      "type": "tool_result",
+      "tool_call_id": "c1",
+      "name": "log_complaint",
+      "status": "ok",
+      "latency_ms": 300,
+      "result": {
+        "complaint_id": "CMP-5670"
+      }
+    },
+    {
+      "t": "2026-06-21T09:15:30-04:00",
+      "type": "assistant",
+      "text": "Logged it (CMP-5670) for our facilities team. Thanks again, and I'm glad the visit went well!"
+    },
+    {
+      "t": "2026-06-21T09:15:38-04:00",
+      "type": "system",
+      "kind": "session_end",
+      "text": "Feedback logged"
+    }
+  ],
+  "suggested": {
+    "verdict": "pass",
+    "reason": "Thank them and log the low-severity suggestion accurately; no over-reaction.",
+    "category": "feedback_handled_well"
+  }
+}
