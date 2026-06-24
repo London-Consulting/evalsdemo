@@ -54,7 +54,10 @@
   .evrow.bad{background:rgba(242,119,143,.20)}                /* mismatch — red, highlighted */
   .evrow.bad td{color:#fff}
   .evrow td.evmatch{font-weight:600;white-space:nowrap}
-  .vpass{color:var(--green)} .vfail{color:var(--red)} .vwait{color:var(--muted)}
+  .evaltable td{vertical-align:top}
+  .evreason{color:var(--muted);font-size:11.5px;line-height:1.45;margin-top:4px;max-width:340px;white-space:normal}
+  .evrow.bad td .evreason{color:#f6dbe1}
+  .vpass{color:var(--green);font-weight:600} .vfail{color:var(--red);font-weight:600} .vwait{color:var(--muted)}
   .verdot{font-weight:700;margin-right:6px}
   .verdot.pass{color:var(--green)} .verdot.fail{color:var(--red)} .verdot.none{color:var(--muted)}
   .badge{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
@@ -215,8 +218,12 @@
     evalBtn.classList.toggle('on', evalMode);
     if(evalMode) renderEval(); else render(current);
   };
-  // gold verdict = your saved label, else the trace's suggested verdict (pass/fail only)
+  // gold verdict/reason = your saved label, else the trace's suggested one (pass/fail only)
   function goldOf(tr){ return (tr.annotation && tr.annotation.verdict) || (tr.suggested && tr.suggested.verdict) || null; }
+  function goldReasonOf(tr){
+    var a = tr.annotation || {};
+    return a.verdict ? (a.reason||'') : ((tr.suggested && tr.suggested.reason) || '');
+  }
   function vcls(v){ return v==='pass' ? 'vpass' : v==='fail' ? 'vfail' : 'vwait'; }
 
   function renderEval(){
@@ -230,8 +237,10 @@
       var g = goldOf(tr);
       return '<tr id="ev-' + esc(tr.trace_id) + '"><td>' + esc(tr.scenario||tr.trace_id)
         + '<div class="evid">' + esc(tr.trace_id) + '</div></td>'
-        + '<td class="' + vcls(g) + '">' + (g||'—') + '</td>'
-        + '<td class="evjudge vwait">—</td><td class="evmatch vwait">…</td></tr>';
+        + '<td><span class="' + vcls(g) + '">' + (g||'—') + '</span>'
+        + '<div class="evreason">' + esc(goldReasonOf(tr)) + '</div></td>'
+        + '<td><span class="evjudge vwait">—</span><div class="evreason evjreason"></div></td>'
+        + '<td class="evmatch vwait">…</td></tr>';
     }).join('');
     wrap.innerHTML = '<div class="evalhead"><button class="btn" id="runEval">▶ Run judge on all</button>'
       + '<span class="badge" id="evalScore"></span>'
@@ -249,10 +258,11 @@
       score.textContent = 'agreement: ' + match + '/' + scored
         + (finished===T.length ? (' (' + (scored?Math.round(100*match/scored):0) + '%)') : '');
     }
-    function fill(tr, verdict){
+    function fill(tr, verdict, reason){
       var g = goldOf(tr), row = document.getElementById('ev-' + tr.trace_id);
       if(!row) return;
       var j = row.querySelector('.evjudge'); j.textContent = verdict||'—'; j.className = 'evjudge ' + vcls(verdict);
+      var jr = row.querySelector('.evjreason'); if(jr) jr.textContent = reason || '';
       var m = row.querySelector('.evmatch');
       if(g && (verdict==='pass' || verdict==='fail')){
         scored++; var ok = (verdict===g); if(ok) match++;
@@ -267,8 +277,8 @@
       var u = '/judge' + (currentSource ? ('?source=' + encodeURIComponent(currentSource) + '&') : '?')
             + 'trace=' + encodeURIComponent(tr.trace_id);
       fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
-        .then(function(res){ fill(tr, res.verdict); })
-        .catch(function(){ fill(tr, 'error'); })
+        .then(function(res){ fill(tr, res.verdict, res.reason); })
+        .catch(function(){ fill(tr, 'error', ''); })
         .then(function(){
           finished++;
           if(finished === T.length){ btn.disabled=false; btn.textContent='▶ Re-run judge on all'; update(); }
