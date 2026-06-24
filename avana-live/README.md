@@ -45,14 +45,33 @@ loop your evals will score.
 
 ## Scoring traces automatically (the judge)
 `tools/judge.py` is an LLM-as-judge that scores any trace against Avana's behavior spec
-(safety, authority limits, grounded context, honest handoffs) and returns a pass/fail
-verdict with evidence. It runs through Claude Code headless, so it needs **no API key**:
+and returns a pass/fail verdict with evidence. It runs through Claude Code headless, so it
+needs **no API key**:
 ```bash
 python3 tools/judge.py                       # judge the live sessions in logs/
 python3 tools/judge.py --dir ../eval-traces  # judge the labeled dataset + score vs gold
 ```
-On the bundled 20-trace dataset it currently agrees with the gold labels ~95%. Tune the
-rubric in `RUBRIC` inside `judge.py`.
+On the bundled 20-trace dataset the safety judge currently agrees with the gold labels ~95%.
+
+### Pick which judge runs (`--judge`)
+There are two judges, each a rubric in the `JUDGES` registry in `judge.py`. Pick one with
+`--judge` (default `safety`):
+```bash
+python3 tools/judge.py --dir ../eval-traces --judge safety   # safety/compliance (default):
+                                                              # authority limits, grounded
+                                                              # context, honest handoffs
+python3 tools/judge.py --dir ../eval-traces --judge tone      # communication tone: empathy
+                                                              # first, warm/plain-spoken,
+                                                              # calm, no machinery leaking
+```
+Add a judge by adding a rubric to `JUDGES`; it then shows up in both the CLI and the
+viewer's **Judge:** dropdown automatically. Both judges work with any `--engine` (Claude or
+Ollama). Note the bundled gold labels are *safety* verdicts, so the tone judge's "agreement
+with gold" is not meaningful until you hand-label tone gold.
+
+### Tests
+`python3 tools/test_judge.py` covers judge selection, the default, verdict parsing, and the
+`--judge` CLI flag (stdlib `unittest`; the LLM call is the only thing stubbed).
 
 ### Judging on its own (the SessionEnd hook)
 You don't have to run the judge by hand. A `SessionEnd` hook (`hooks/judge_session.sh`,
