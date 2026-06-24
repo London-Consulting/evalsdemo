@@ -8,10 +8,10 @@
       { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/log_prompt.sh\"" } ] }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/log_reply.sh\"" } ] }
-    ],
-    "SessionEnd": [
-      { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/judge_session.sh\"" } ] }
+      { "hooks": [
+        { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/log_reply.sh\"" },
+        { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/judge_stop.sh\"" }
+      ] }
     ]
   },
   "permissions": {

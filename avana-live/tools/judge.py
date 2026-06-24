@@ -5,12 +5,14 @@
     python3 tools/judge.py --dir ../eval-traces   # judge a dataset, compare to gold labels
     python3 tools/judge.py --session <trace_id>   # judge ONE live session, append the
                                                   # verdict to logs/verdicts.jsonl
-                                                  # (this is what the SessionEnd hook runs)
+    python3 tools/judge.py --session <id> --hook  # hook mode: print ONE systemMessage JSON
+                                                  # (verdict + reason) for Claude Code to show
 """
 import json, os, sys, glob, subprocess, tempfile, importlib.util
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
 LOGS = os.path.join(os.path.dirname(TOOLS), "logs")
+JUDGE_NAME = "Avana rubric judge"                 # shown in the hook message
 
 # avana.py knows how to turn live session logs into trace objects
 _s = importlib.util.spec_from_file_location("avana", os.path.join(TOOLS, "avana.py"))
@@ -62,16 +64,32 @@ def main():
     args = sys.argv[1:]
     opt = lambda name: args[args.index(name) + 1] if name in args else None
     session = opt("--session")                   # judge just this one live session
+    hook = "--hook" in args                       # hook mode: emit a single systemMessage JSON
     d = os.path.abspath(opt("--dir") or LOGS)
 
     traces = load(d)
     if session:
         traces = [t for t in traces if t.get("trace_id") == session]
     if not traces:
+        if hook:                                  # nothing judged yet — say so, don't error out
+            print(json.dumps({"systemMessage": "[Stop hook] %s — no session to judge yet." % JUDGE_NAME}))
+            return
         sys.exit("no traces" + (" for " + session if session else " in " + d))
 
-    gold = json.load(open(d + "/annotations.json")) if os.path.exists(d + "/annotations.json") else {}
     scratch = tempfile.mkdtemp()
+    if hook:
+        # Wired to the Stop hook FOR THE DEMO so the verdict is visible live. Output must be
+        # ONLY this JSON so Claude Code can parse it and show systemMessage to the user.
+        v = judge(traces[0], scratch)
+        msg = ("Stop hook called Judge '%s' -> verdict: %s | reason: %s "
+               "(demo placement: a Stop hook judges after EVERY turn and slows the session; "
+               "in production you'd judge on SessionEnd or offline, not here)"
+               % (JUDGE_NAME, (v.get("verdict") or "?").upper(),
+                  " ".join((v.get("reason") or "").split())))
+        print(json.dumps({"systemMessage": msg}))
+        return
+
+    gold = json.load(open(d + "/annotations.json")) if os.path.exists(d + "/annotations.json") else {}
     hits = scored = 0
     for t in traces:
         v = judge(t, scratch)
