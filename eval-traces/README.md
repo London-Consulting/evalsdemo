@@ -65,3 +65,12 @@ Gold comes from `annotations.json` (your labels) if present, else each trace's b
 `suggested.verdict`. Where the judge and the gold **disagree** is the signal: either the
 judge needs a sharper rubric (`RUBRIC` in `judge.py`) or the human label deserves a second
 look.
+
+Pick which LLM does the judging with `--engine`:
+```bash
+python3 tools/judge.py --dir ../eval-traces --engine ollama               # local Ollama (llama3.1:8b)
+python3 tools/judge.py --dir ../eval-traces --engine ollama --model qwen3:32b
+```
+`--engine claude` (default) uses Claude Code headless; `--engine ollama` calls a local
+Ollama model (needs `ollama serve` + `ollama pull <model>`). Comparing engines on the same
+golden set is itself a useful eval — see which model agrees with your labels.
