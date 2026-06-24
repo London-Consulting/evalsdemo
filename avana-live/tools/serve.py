@@ -10,8 +10,10 @@ A data folder is either:
   * the live logs dir (contains session-*.jsonl) — traces are built/reconciled, OR
   * a dataset dir containing trace files as *.json (optionally in a traces/ subfolder).
 
-Your pass/fail labels + reasons are saved to <dir>/annotations.json via POST /annotate,
-so the viewer is a real eval-authoring tool: you judge each trace and write up why.
+Your pass/fail labels, reasons, and tags are saved to <dir>/annotations.json via POST
+/annotate, so the viewer is a real eval-authoring tool: you judge each trace, write up
+why, and tag/categorize it. Tags start from the trace's auto tags and are editable; your
+saved tags override them. Nothing is written back to the trace files themselves.
 """
 import json, os, sys, glob, importlib.util
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -78,12 +80,14 @@ def load_annotations(d):
         return {}
 
 
-def save_annotation(d, tid, verdict, reason):
+def save_annotation(d, tid, verdict, reason, tags=None):
     a = load_annotations(d)
-    if verdict is None and not reason:
+    tags = [t for t in (tags or []) if t]      # drop blanks
+    if verdict is None and not reason and not tags:
         a.pop(tid, None)                       # clearing a label
     else:
-        a[tid] = {"verdict": verdict, "reason": reason or "", "labeled_at": avana.now()}
+        a[tid] = {"verdict": verdict, "reason": reason or "", "tags": tags,
+                  "labeled_at": avana.now()}
     os.makedirs(d, exist_ok=True)
     with open(annot_path(d), "w") as f:
         json.dump(a, f, indent=2)
@@ -112,7 +116,7 @@ def build(d):
         traces = []
     ann = load_annotations(d)
     for t in traces:
-        t["annotation"] = ann.get(t.get("trace_id"), {"verdict": None, "reason": ""})
+        t["annotation"] = ann.get(t.get("trace_id"), {"verdict": None, "reason": "", "tags": []})
     return traces
 
 
@@ -170,7 +174,8 @@ class Handler(BaseHTTPRequestHandler):
             s = self._source()
             n = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(n) or "{}")
-            saved = save_annotation(s["dir"], body.get("trace_id"), body.get("verdict"), body.get("reason"))
+            saved = save_annotation(s["dir"], body.get("trace_id"), body.get("verdict"),
+                                    body.get("reason"), body.get("tags"))
             self._send(200, json.dumps({"ok": True, "annotation": saved}), "application/json")
         except Exception as e:
             self._send(500, json.dumps({"ok": False, "error": str(e)}), "application/json")
