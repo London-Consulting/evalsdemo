@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Avana — Live Session Traces</title>
+<style>
+  :root{--bg:#0e141b;--panel:#151f2b;--panel2:#1b2836;--line:#27384a;--ink:#e8eef5;--muted:#8ba0b6;
+    --user:#274156;--asst:#1c2a3a;--human:#2d234a;--tool:#15242c;--accent:#5eb0ef;--green:#7bd389;--violet:#c79bf0;--red:#f2778f;}
+  *{box-sizing:border-box}
+  body{margin:0;font:14.5px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);display:flex;height:100vh;overflow:hidden}
+  aside{width:300px;flex:none;border-right:1px solid var(--line);overflow:auto;background:var(--panel)}
+  aside h1{font-size:14px;margin:0;padding:16px 16px 4px}
+  aside .sub{padding:0 16px 12px;color:var(--muted);font-size:12px}
+  .trace-item{padding:12px 16px;border-top:1px solid var(--line);cursor:pointer}
+  .trace-item:hover,.trace-item.active{background:var(--panel2)}
+  .trace-item.active{box-shadow:inset 3px 0 0 var(--accent)}
+  .trace-item .sc{font-weight:600;font-size:13.5px}
+  .trace-item .pe{color:var(--muted);font-size:12px;font-family:ui-monospace,Menlo,monospace}
+  .tag{font-size:10.5px;padding:2px 7px;border-radius:99px;background:var(--panel);border:1px solid var(--line);color:var(--muted);margin-right:5px}
+  main{flex:1;overflow:auto}
+  .topbar{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:16px 26px;z-index:5}
+  .topbar h2{margin:0 0 4px;font-size:18px}
+  .topbar .ids{color:var(--muted);font-size:12px;font-family:ui-monospace,Menlo,monospace}
+  .topbar .right{float:right;display:flex;gap:6px;align-items:center}
+  .btn{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:6px 11px;cursor:pointer}
+  .btn:hover{border-color:var(--accent);color:var(--ink)}
+  .btn.on{background:var(--accent);color:#0d1620;border-color:var(--accent)}
+  /* labeling panel */
+  .label-bar{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+  .label-bar .lrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .label-bar .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:4px}
+  .lb{font-size:13px;padding:6px 16px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer}
+  .lb.pass.sel{background:var(--green);color:#0d1620;border-color:var(--green)}
+  .lb.fail.sel{background:var(--red);color:#0d1620;border-color:var(--red)}
+  .label-bar textarea{width:100%;margin-top:10px;background:#0c141b;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:13px/1.5 inherit;min-height:62px;resize:vertical}
+  .label-bar .save{background:var(--accent);color:#0d1620;border-color:var(--accent);font-weight:600}
+  .label-bar .status{color:var(--muted);font-size:12px;margin-left:6px}
+  .label-bar .suggest{font-size:12px;color:var(--muted);margin-top:9px}
+  .label-bar .suggest b{color:var(--ink)}
+  .label-bar .link{color:var(--accent);cursor:pointer;text-decoration:underline}
+  .verdot{font-weight:700;margin-right:6px}
+  .verdot.pass{color:var(--green)} .verdot.fail{color:var(--red)} .verdot.none{color:var(--muted)}
+  .badge{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .wrap{max-width:880px;padding:20px 26px 80px}
+  .empty{color:var(--muted);padding:40px 26px;max-width:680px}
+  .empty code,.empty pre{background:var(--panel);padding:2px 6px;border-radius:5px}
+  .context{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:8px}
+  .context .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px}
+  .ev{display:grid;grid-template-columns:78px 1fr;gap:14px;padding:7px 0}
+  .ts{color:var(--muted);font-size:11.5px;font-family:ui-monospace,Menlo,monospace;text-align:right;padding-top:9px;white-space:nowrap}
+  .bubble{border-radius:12px;padding:10px 14px;border:1px solid var(--line);white-space:pre-wrap}
+  .role{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between}
+  .b-user{background:var(--user)} .b-asst{background:var(--asst)} .b-human{background:var(--human);border-color:#4a3a72}
+  .bubble code{background:#0c141b;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font:12.5px ui-monospace,Menlo,monospace}
+  .bubble strong{color:#fff}
+  .tool{background:var(--tool);border:1px solid #28505a;border-radius:10px;overflow:hidden}
+  .tool summary{cursor:pointer;padding:9px 12px;display:flex;align-items:center;gap:8px;list-style:none;font-size:13px}
+  .tool summary::-webkit-details-marker{display:none}
+  .tool .fn{font-family:ui-monospace,Menlo,monospace;color:#7fd9e6;font-weight:600}
+  .tool .lat{margin-left:auto;color:var(--muted);font-size:11.5px;font-family:ui-monospace,Menlo,monospace}
+  .tool .body{padding:0 12px 12px}
+  .tool .seclbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:8px 0 3px}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:99px;background:var(--green)}
+  pre{margin:0;background:#0c141b;border:1px solid var(--line);border-radius:8px;padding:9px 11px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace;color:#cfe1f0}
+  .sys{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:12px}
+  .sys::before,.sys::after{content:"";flex:1;height:1px;background:var(--line)}
+  .sys.handoff{color:var(--violet)} .sys.handoff::before,.sys.handoff::after{background:#4a3a72}
+</style>
+</head>
+<body>
+<aside id="side"><h1>🩺 Avana — Live Traces</h1><div class="sub" id="sideSub"></div></aside>
+<main>
+  <div class="topbar"><div class="right">
+    <span class="badge" id="builtBadge"></span>
+    <select class="btn" id="sourceSel" title="Data source" style="display:none"></select>
+    <button class="btn" id="reloadBtn">↻ Reload</button>
+    <button class="btn" id="togglePatient">Patient view</button>
+    <button class="btn" id="toggleRaw">View raw JSON</button></div>
+    <h2 id="scTitle">—</h2><div class="ids" id="scIds"></div></div>
+  <div class="wrap" id="wrap"></div>
+</main>
+
+<!-- file:// fallback data (generated by: python3 tools/avana.py view).
+     When served via tools/serve.py, fresh data is fetched from /data instead. -->
+<script src="logs/_view.js"></script>
+<script>
+(function(){
+  "use strict";
+  var side = document.getElementById('side');
+  var wrap = document.getElementById('wrap');
+  var served = location.protocol.indexOf('http') === 0;  // running under serve.py?
+  var currentSource = '';   // which data folder we're viewing (set from /sources)
+  var timeOnly = function(iso){ return String(iso).slice(11,19); };
+  var esc = function(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); };
+  // minimal markdown for chat bubbles: **bold** and `code` (text is escaped first)
+  var md = function(s){
+    return esc(s)
+      .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+      .replace(/`([^`]+)`/g,'<code>$1</code>');
+  };
+
+  // Reload: under the server, re-fetch /data (which rebuilds from the logs).
+  // On file://, just reload the page (re-reads logs/_view.js).
+  document.getElementById('reloadBtn').onclick = function(){
+    if(served){ load(); } else { location.reload(); }
+  };
+
+  var srcQuery = function(){ return currentSource ? ('?source=' + encodeURIComponent(currentSource)) : ''; };
+
+  function load(){
+    if(served){
+      wrap.innerHTML = '<div class="empty">Loading…</div>';
+      fetch('/data' + srcQuery(), {cache:'no-store'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){ start(d.traces || [], d.built); })
+        .catch(function(e){ wrap.innerHTML = '<div class="empty">Error fetching /data: ' + esc(e) + '</div>'; });
+    } else {
+      start((window.TRACES || []), window.__BUILT);
+    }
+  }
+
+  // Populate the source dropdown from /sources, then load the first one.
+  function initSources(){
+    var sel = document.getElementById('sourceSel');
+    if(!served){ load(); return; }   // file:// has no server-side sources
+    fetch('/sources', {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        var srcs = (d && d.sources) || [];
+        if(srcs.length <= 1){ if(srcs.length) currentSource = srcs[0].id; load(); return; }
+        sel.innerHTML = srcs.map(function(s){
+          return '<option value="' + esc(s.id) + '">' + esc(s.label) + ' (' + (s.count||0) + ')</option>';
+        }).join('');
+        currentSource = srcs[0].id;
+        sel.style.display = '';
+        sel.onchange = function(){ currentSource = sel.value; load(); };
+        load();
+      })
+      .catch(function(){ load(); });   // fall back to the default source
+  }
+
+  function start(T, built){
+    T = (T || []).slice();
+    // chronological safety: sort each trace's events by timestamp
+    T.forEach(function(tr){ if(tr && tr.events) tr.events.sort(function(a,b){return (a.t||"")<(b.t||"")?-1:1;}); });
+
+    document.querySelectorAll('.trace-item').forEach(function(e){ e.remove(); });  // idempotent on reload
+    document.getElementById('builtBadge').textContent =
+      built ? ('data built ' + String(built).slice(11,19) + (served ? ' · live' : '')) : 'no build timestamp';
+
+  if(!T.length){
+    document.getElementById('sideSub').textContent = 'no sessions yet';
+    document.getElementById('scTitle').textContent = 'No traces yet';
+    wrap.innerHTML = '<div class="empty"><p>Chat with Avana in Claude Code (launched inside <code>avana-live/</code>), then ' +
+      (served ? 'click <b>↻ Reload</b> above.' : 'build the view from a separate terminal:</p><pre>python3 tools/avana.py view</pre><p>…then click <b>↻ Reload</b>.') + '</p></div>';
+    return;
+  }
+
+  document.getElementById('sideSub').textContent = T.length + ' session(s) · click to inspect';
+  T.forEach(function(tr,i){
+    var el = document.createElement('div');
+    el.className = 'trace-item' + (i===T.length-1 ? ' active' : '');
+    el.innerHTML = '<div class="sc">' + verdotHTML(tr) + esc(tr.scenario) + '</div><div class="pe">' + esc(tr.trace_id) + '</div>'
+      + '<div style="margin-top:7px">' + (tr.outcome && tr.outcome.tags || []).map(function(t){return '<span class="tag">'+esc(t)+'</span>';}).join('') + '</div>';
+    el.onclick = function(){
+      var items = document.querySelectorAll('.trace-item');
+      for(var k=0;k<items.length;k++) items[k].classList.remove('active');
+      el.classList.add('active');
+      render(tr);
+    };
+    side.appendChild(el);
+  });
+
+  var rawMode = false;
+  var patientView = false;   // when true, show only the patient <-> agent conversation
+  var current = T[T.length-1];   // newest by default
+  var rawBtn = document.getElementById('toggleRaw');
+  var patientBtn = document.getElementById('togglePatient');
+  rawBtn.onclick = function(){
+    rawMode = !rawMode;
+    this.textContent = rawMode ? 'View timeline' : 'View raw JSON';
+    render(current);
+  };
+  patientBtn.onclick = function(){
+    patientView = !patientView;
+    patientBtn.classList.toggle('on', patientView);
+    patientBtn.textContent = patientView ? 'Full trace' : 'Patient view';
+    render(current);
+  };
+
+  // In patient view, hide everything that isn't the conversation itself.
+  function visibleEvents(tr){
+    var evs = tr.events || [];
+    if(!patientView) return evs;
+    return evs.filter(function(e){ return e.type === 'user' || e.type === 'assistant' || e.type === 'human'; });
+  }
+
+  function verdotSym(v){ return v==='pass' ? '✓' : v==='fail' ? '✗' : '○'; }
+  function verdotHTML(tr){
+    var v = (tr.annotation && tr.annotation.verdict) || null;
+    return '<span class="verdot ' + (v||'none') + '" id="dot-' + esc(tr.trace_id) + '">' + verdotSym(v) + '</span>';
+  }
+  function updateDot(tr){
+    var el = document.getElementById('dot-' + tr.trace_id); if(!el) return;
+    var v = (tr.annotation && tr.annotation.verdict) || null;
+    el.className = 'verdot ' + (v||'none'); el.textContent = verdotSym(v);
+  }
+
+  function labelBarHTML(tr){
+    if(!served) return '<div class="label-bar"><span class="lbl">Labeling needs the server</span> — run <code>python3 tools/serve.py --dir &lt;folder&gt;</code> and open the localhost URL.</div>';
+    var a = tr.annotation || {}; var sg = tr.suggested;
+    var h = '<div class="label-bar"><div class="lrow"><span class="lbl">Your verdict</span>'
+      + '<button class="lb pass" id="lbPass">Pass</button>'
+      + '<button class="lb fail" id="lbFail">Fail</button>'
+      + '<button class="btn" id="lbClear">Clear</button>'
+      + '<button class="btn save" id="lbSave">Save label</button>'
+      + '<span class="status" id="labelStatus">' + (a.verdict ? ('saved · ' + a.verdict.toUpperCase()) : 'unlabeled') + '</span></div>'
+      + '<textarea id="reasonBox" placeholder="Why does this pass or fail? (your reasoning becomes the eval rationale)">' + esc(a.reason||'') + '</textarea>';
+    if(sg){ h += '<div class="suggest">💡 Suggested: <b>' + esc(String(sg.verdict||'').toUpperCase()) + '</b> — ' + esc(sg.reason||'') + ' &nbsp;<span class="link" id="lbAccept">use this</span></div>'; }
+    return h + '</div>';
+  }
+
+  function wireLabeling(tr){
+    var pass=document.getElementById('lbPass'), fail=document.getElementById('lbFail');
+    if(!pass) return;
+    var save=document.getElementById('lbSave'), clear=document.getElementById('lbClear');
+    var reason=document.getElementById('reasonBox'), status=document.getElementById('labelStatus');
+    var accept=document.getElementById('lbAccept');
+    var pending = (tr.annotation && tr.annotation.verdict) || null;
+    function sel(){ pass.classList.toggle('sel', pending==='pass'); fail.classList.toggle('sel', pending==='fail'); }
+    function doSave(verdict, txt){
+      status.textContent = 'saving…';
+      fetch('/annotate' + srcQuery(), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({trace_id:tr.trace_id, verdict:verdict, reason:txt})})
+        .then(function(r){ return r.json(); })
+        .then(function(res){
+          tr.annotation = res.annotation || {verdict:verdict, reason:txt};
+          status.textContent = verdict ? ('saved · ' + verdict.toUpperCase()) : 'cleared';
+          updateDot(tr);
+        })
+        .catch(function(e){ status.textContent = 'error: ' + e; });
+    }
+    sel();
+    pass.onclick = function(){ pending='pass'; sel(); };
+    fail.onclick = function(){ pending='fail'; sel(); };
+    if(accept) accept.onclick = function(){ pending = tr.suggested.verdict; reason.value = tr.suggested.reason || ''; sel(); };
+    clear.onclick = function(){ pending=null; reason.value=''; sel(); doSave(null, ''); };
+    save.onclick = function(){ doSave(pending, reason.value); };
+  }
+
+  function render(tr){
+    current = tr;
+    document.getElementById('scTitle').textContent = tr.scenario;
+    document.getElementById('scIds').textContent = tr.trace_id + ' · ' + tr.channel + ' · ' + tr.model + ' · started ' + tr.started_at;
+    if(rawMode){ wrap.innerHTML = '<pre>' + esc(JSON.stringify(tr,null,2)) + '</pre>'; return; }
+    var h = '';
+    if(!patientView){
+      h += labelBarHTML(tr);
+      var c = tr.context || {};
+      h += '<div class="context"><div class="lbl">Context</div><div>' + esc(c.summary||'') + '</div>'
+        + '<div style="margin-top:8px;font-size:13px;color:var(--muted)">Tools used: '
+        + ((tr.outcome && tr.outcome.tools_used || []).map(esc).join(', ') || 'none') + '</div></div>';
+    }
+    visibleEvents(tr).forEach(function(e){ h += renderEvent(e); });
+    wrap.innerHTML = h;
+    if(!patientView){ wireLabeling(tr); }
+  }
+
+  function renderEvent(e){
+    if(e.type==='system'){
+      var cls = e.kind==='handoff' ? 'sys handoff' : 'sys';
+      return '<div class="'+cls+'">' + esc(e.text) + (e.t?(' · '+timeOnly(e.t)):'') + '</div>';
+    }
+    if(e.type==='tool_call'){
+      return '<div class="ev"><div class="ts">'+timeOnly(e.t)+'</div>'
+        + '<details class="tool"><summary><span class="fn">'+esc(e.name)+'</span><span>call</span></summary>'
+        + '<div class="body"><div class="seclbl">arguments</div><pre>'+esc(JSON.stringify(e.args,null,2))+'</pre></div></details></div>';
+    }
+    if(e.type==='tool_result'){
+      return '<div class="ev"><div class="ts">'+timeOnly(e.t)+'</div>'
+        + '<details class="tool"><summary><span class="dot"></span><span class="fn">'+esc(e.name)+'</span><span>result</span><span class="lat">'+(e.status||'')+' · '+e.latency_ms+'ms</span></summary>'
+        + '<div class="body"><div class="seclbl">returned</div><pre>'+esc(JSON.stringify(e.result,null,2))+'</pre></div></details></div>';
+    }
+    if(e.type==='human'){
+      return '<div class="ev"><div class="ts">'+timeOnly(e.t)+'</div>'
+        + '<div class="bubble b-human"><div class="role"><span>👤 '+esc(e.name)+' · '+esc(e.role)+'</span></div>'+md(e.text)+'</div></div>';
+    }
+    if(e.type==='user'){
+      return '<div class="ev"><div class="ts">'+timeOnly(e.t)+'</div>'
+        + '<div class="bubble b-user"><div class="role"><span>Patient</span></div>'+md(e.text)+'</div></div>';
+    }
+    return '<div class="ev"><div class="ts">'+timeOnly(e.t)+'</div>'
+      + '<div class="bubble b-asst"><div class="role"><span>Avana</span></div>'+md(e.text)+'</div></div>';
+  }
+
+  render(current);
+  } // end start()
+
+  initSources();
+})();
+</script>
+</body>
+</html>

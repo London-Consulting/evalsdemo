@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/log_start.sh\"" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/log_prompt.sh\"" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "\"$CLAUDE_PROJECT_DIR/hooks/log_reply.sh\"" } ] }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python3 tools/avana.py:*)",
+      "Bash(python3 \"$CLAUDE_PROJECT_DIR/tools/avana.py\":*)",
+      "Bash(python3 ./tools/avana.py:*)"
+    ]
+  }
+}
