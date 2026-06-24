@@ -11,6 +11,11 @@ Everything lives in [`avana-live/`](avana-live/):
 - **Automatic tracing** — hooks log each session to `avana-live/logs/*.jsonl`.
 - **Trace viewer + labeler** — `tools/serve.py` serves a browser viewer where you inspect
   each conversation, switch between data sources, and assign pass/fail labels with reasons.
+- **LLM-as-judge** — `tools/judge.py` scores traces against Avana's behavior spec and
+  reports agreement with the human labels. Runs through Claude Code headless (no API key).
+
+A labeled eval dataset lives alongside in [`eval-traces/`](eval-traces/) (20 conversations
+with seeded failures) — the judge scores ~95% agreement with its gold labels.
 
 ## Quick start
 

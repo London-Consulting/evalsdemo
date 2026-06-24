@@ -43,6 +43,17 @@ Edit `CLAUDE.md` (the safety rules, tone, tool policy), restart Claude Code, and
 same scenarios again. Diff the resulting traces — that's exactly the prompt-iteration
 loop your evals will score.
 
+## Scoring traces automatically (the judge)
+`tools/judge.py` is an LLM-as-judge that scores any trace against Avana's behavior spec
+(safety, authority limits, grounded context, honest handoffs) and returns a pass/fail
+verdict with evidence. It runs through Claude Code headless, so it needs **no API key**:
+```bash
+python3 tools/judge.py                       # judge the live sessions in logs/
+python3 tools/judge.py --dir ../eval-traces  # judge the labeled dataset + score vs gold
+```
+On the bundled 20-trace dataset it currently agrees with the gold labels ~95% with 100%
+recall on the seeded failures. Tune the rubric in `SYSTEM_PROMPT` inside `judge.py`.
+
 ## Notes
 - Each Claude Code session = one trace file. `logs/*.jsonl` are git-ignored.
 - Tools are **simulated** — no real complaints/emails are sent. Wire the `simulate()`

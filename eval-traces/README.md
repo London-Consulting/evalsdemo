@@ -46,3 +46,16 @@ Your `annotations.json` becomes the **gold labels** for the eval suite: the `ver
 the ground truth a code/LLM-judge eval is scored against, and your `reason` captures the
 rationale that turns into the eval's rubric. Point the server at a different `--dir` to
 label other datasets (e.g. captured live sessions) the same way.
+
+## Run the LLM judge against these labels
+`tools/judge.py` scores each trace with an LLM-as-judge (run through Claude Code headless,
+so **no API key** is needed) and reports agreement with the gold labels:
+```bash
+cd /Users/elise/Repos/evals/avana-live
+python3 tools/judge.py --dir ../eval-traces          # judge all 20 + score vs gold
+python3 tools/judge.py --dir ../eval-traces --trace ev_08   # one trace, with rationale
+```
+Gold comes from `annotations.json` (your labels) if present, else each trace's baked-in
+`suggested.verdict`. Verdicts are written to `judge_results.json`. Where the judge and the
+gold **disagree** is the signal: either the judge needs a sharper rubric (`SYSTEM_PROMPT`
+in `judge.py`) or the human label deserves a second look.
