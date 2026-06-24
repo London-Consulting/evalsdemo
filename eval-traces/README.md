@@ -65,3 +65,7 @@ Gold comes from `annotations.json` (your labels) if present, else each trace's b
 `suggested.verdict`. Where the judge and the gold **disagree** is the signal: either the
 judge needs a sharper rubric (`RUBRIC` in `judge.py`) or the human label deserves a second
 look.
+
+Or do it in the browser: open the viewer, click **⚖ Judge eval** in the top bar, then
+**Run judge on all**. It runs the judge over every trace and shows golden vs. judge
+verdicts side by side — **green where they match, red where they don't** (pass/fail only).

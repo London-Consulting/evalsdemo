@@ -15,7 +15,7 @@ Your pass/fail labels, reasons, and tags are saved to <dir>/annotations.json via
 why, and tag/categorize it. Tags start from the trace's auto tags and are editable; your
 saved tags override them. Nothing is written back to the trace files themselves.
 """
-import json, os, sys, glob, importlib.util
+import json, os, sys, glob, tempfile, importlib.util
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -24,9 +24,17 @@ ROOT = os.path.dirname(TOOLS)
 PORT = int(os.environ.get("AVANA_PORT", "8787"))
 LOGS = os.path.join(ROOT, "logs")
 
-_spec = importlib.util.spec_from_file_location("avana", os.path.join(TOOLS, "avana.py"))
-avana = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(avana)
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(TOOLS, name + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+avana = _load("avana")
+judge = _load("judge")                 # the LLM judge (RUBRIC + judge()); reused by /judge
+JUDGE_SCRATCH = tempfile.mkdtemp(prefix="avana-judge-")
 
 
 def _arg_dirs():
@@ -161,6 +169,20 @@ class Handler(BaseHTTPRequestHandler):
                 payload = {"traces": build(s["dir"]), "built": avana.now(),
                            "dir": s["dir"], "source": s["id"], "labeling": True}
                 self._send(200, json.dumps(payload), "application/json")
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}), "application/json")
+            return
+        if path == "/judge":                       # run the LLM judge on ONE trace
+            try:
+                s = self._source()
+                tid = (parse_qs(urlparse(self.path).query).get("trace") or [None])[0]
+                t = next((x for x in build(s["dir"]) if x.get("trace_id") == tid), None)
+                if not t:
+                    self._send(404, json.dumps({"error": "no such trace"}), "application/json")
+                    return
+                v = judge.judge(t, JUDGE_SCRATCH)  # {"verdict","reason",...}; tags ignored here
+                self._send(200, json.dumps({"trace_id": tid, "verdict": v.get("verdict"),
+                                            "reason": v.get("reason", "")}), "application/json")
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}), "application/json")
             return

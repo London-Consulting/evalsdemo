@@ -44,6 +44,17 @@
   .tag .tagx:hover{color:var(--red)}
   .taginput{background:#0c141b;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:4px 9px;font:12px/1.4 inherit;width:150px}
   .taginput:focus{outline:none;border-color:var(--accent)}
+  /* judge-eval grid */
+  .evalhead{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+  .evaltable{width:100%;border-collapse:collapse;font-size:13.5px}
+  .evaltable th,.evaltable td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  .evaltable th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  .evid{color:var(--muted);font-size:11px;font-family:ui-monospace,Menlo,monospace;margin-top:2px}
+  .evrow.ok{background:rgba(123,211,137,.13)}                 /* match — green */
+  .evrow.bad{background:rgba(242,119,143,.20)}                /* mismatch — red, highlighted */
+  .evrow.bad td{color:#fff}
+  .evrow td.evmatch{font-weight:600;white-space:nowrap}
+  .vpass{color:var(--green)} .vfail{color:var(--red)} .vwait{color:var(--muted)}
   .verdot{font-weight:700;margin-right:6px}
   .verdot.pass{color:var(--green)} .verdot.fail{color:var(--red)} .verdot.none{color:var(--muted)}
   .badge{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
@@ -81,7 +92,8 @@
     <select class="btn" id="sourceSel" title="Data source" style="display:none"></select>
     <button class="btn" id="reloadBtn">↻ Reload</button>
     <button class="btn" id="togglePatient">Patient view</button>
-    <button class="btn" id="toggleRaw">View raw JSON</button></div>
+    <button class="btn" id="toggleRaw">View raw JSON</button>
+    <button class="btn" id="toggleEval">⚖ Judge eval</button></div>
     <h2 id="scTitle">—</h2><div class="ids" id="scIds"></div></div>
   <div class="wrap" id="wrap"></div>
 </main>
@@ -169,6 +181,7 @@
     el.innerHTML = '<div class="sc">' + verdotHTML(tr) + esc(tr.scenario) + '</div><div class="pe">' + esc(tr.trace_id) + '</div>'
       + '<div style="margin-top:7px" id="sidetags-' + esc(tr.trace_id) + '">' + tagSpans(tagsFor(tr)) + '</div>';
     el.onclick = function(){
+      if(evalMode){ evalMode=false; if(evalBtn) evalBtn.classList.remove('on'); }  // leave the eval grid
       var items = document.querySelectorAll('.trace-item');
       for(var k=0;k<items.length;k++) items[k].classList.remove('active');
       el.classList.add('active');
@@ -193,6 +206,77 @@
     patientBtn.textContent = patientView ? 'Full trace' : 'Patient view';
     render(current);
   };
+
+  // ── Judge eval: run the judge over every trace and compare to the golden verdicts ──
+  var evalMode = false;
+  var evalBtn = document.getElementById('toggleEval');
+  evalBtn.onclick = function(){
+    evalMode = !evalMode;
+    evalBtn.classList.toggle('on', evalMode);
+    if(evalMode) renderEval(); else render(current);
+  };
+  // gold verdict = your saved label, else the trace's suggested verdict (pass/fail only)
+  function goldOf(tr){ return (tr.annotation && tr.annotation.verdict) || (tr.suggested && tr.suggested.verdict) || null; }
+  function vcls(v){ return v==='pass' ? 'vpass' : v==='fail' ? 'vfail' : 'vwait'; }
+
+  function renderEval(){
+    document.getElementById('scTitle').textContent = 'Judge vs. golden set';
+    document.getElementById('scIds').textContent = T.length + ' trace(s) · comparing pass/fail only';
+    if(!served){
+      wrap.innerHTML = '<div class="empty">Judge eval needs the server — run <code>python3 tools/serve.py</code> and open the localhost URL.</div>';
+      return;
+    }
+    var rows = T.map(function(tr){
+      var g = goldOf(tr);
+      return '<tr id="ev-' + esc(tr.trace_id) + '"><td>' + esc(tr.scenario||tr.trace_id)
+        + '<div class="evid">' + esc(tr.trace_id) + '</div></td>'
+        + '<td class="' + vcls(g) + '">' + (g||'—') + '</td>'
+        + '<td class="evjudge vwait">—</td><td class="evmatch vwait">…</td></tr>';
+    }).join('');
+    wrap.innerHTML = '<div class="evalhead"><button class="btn" id="runEval">▶ Run judge on all</button>'
+      + '<span class="badge" id="evalScore"></span>'
+      + '<span class="badge">✓ match = green · ✗ mismatch = red</span></div>'
+      + '<table class="evaltable"><thead><tr><th>Trace</th><th>Golden</th><th>Judge</th><th>Match</th></tr></thead><tbody>'
+      + rows + '</tbody></table>';
+    document.getElementById('runEval').onclick = runEvalAll;
+  }
+
+  function runEvalAll(){
+    var score = document.getElementById('evalScore');
+    var btn = document.getElementById('runEval'); btn.disabled = true; btn.textContent = 'Running…';
+    var idx=0, finished=0, match=0, scored=0, CONC=4;
+    function update(){
+      score.textContent = 'agreement: ' + match + '/' + scored
+        + (finished===T.length ? (' (' + (scored?Math.round(100*match/scored):0) + '%)') : '');
+    }
+    function fill(tr, verdict){
+      var g = goldOf(tr), row = document.getElementById('ev-' + tr.trace_id);
+      if(!row) return;
+      var j = row.querySelector('.evjudge'); j.textContent = verdict||'—'; j.className = 'evjudge ' + vcls(verdict);
+      var m = row.querySelector('.evmatch');
+      if(g && (verdict==='pass' || verdict==='fail')){
+        scored++; var ok = (verdict===g); if(ok) match++;
+        row.className = 'evrow ' + (ok ? 'ok' : 'bad');
+        m.className = 'evmatch'; m.textContent = ok ? '✓ match' : '✗ differ';
+      } else { m.className = 'evmatch vwait'; m.textContent = '—'; }
+      update();
+    }
+    function worker(){
+      if(idx >= T.length) return;
+      var tr = T[idx++];
+      var u = '/judge' + (currentSource ? ('?source=' + encodeURIComponent(currentSource) + '&') : '?')
+            + 'trace=' + encodeURIComponent(tr.trace_id);
+      fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
+        .then(function(res){ fill(tr, res.verdict); })
+        .catch(function(){ fill(tr, 'error'); })
+        .then(function(){
+          finished++;
+          if(finished === T.length){ btn.disabled=false; btn.textContent='▶ Re-run judge on all'; update(); }
+          else worker();
+        });
+    }
+    for(var i=0;i<Math.min(CONC, T.length);i++) worker();
+  }
 
   // In patient view, hide everything that isn't the conversation itself.
   function visibleEvents(tr){
