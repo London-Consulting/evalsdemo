@@ -47,6 +47,10 @@ the ground truth a code/LLM-judge eval is scored against, and your `reason` capt
 rationale that turns into the eval's rubric. Point the server at a different `--dir` to
 label other datasets (e.g. captured live sessions) the same way.
 
+## Create a judge from these labels
+[`judge-creator-prompt.md`](judge-creator-prompt.md) is a teaching template: hand an LLM
+your golden annotations and it writes you a judge that reproduces them.
+
 ## Run the LLM judge against these labels
 `tools/judge.py` scores each trace with an LLM-as-judge (run through Claude Code headless,
 so **no API key** is needed) and reports agreement with the gold labels:
