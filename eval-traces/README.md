@@ -28,6 +28,9 @@ In the browser:
 - Open a trace → a **labeling panel** sits above the conversation: click **Pass** or
   **Fail**, type your reasoning in the box, and **Save label** (written to
   `annotations.json`). **Clear** removes a label.
+- **Tags** sit in the same panel: they start from the trace's auto tags and are editable —
+  type a tag + **Enter** to add, click **×** to remove, then **Save label**. Use them to
+  categorize traces. Your saved tags override the auto ones (the trace files are untouched).
 - The 💡 *Suggested* line offers an AI starting point — **use this** copies it into your
   verdict + reason so you can edit rather than start blank.
 - **Patient view** hides tool calls/system events; **View raw JSON** shows the trace.
