@@ -271,7 +271,7 @@
       .catch(function(){ fill(null); });
   }
 
-  // Fill the AI dropdown from /engines (Claude + any local Ollama models). Cached after first load.
+  // Fill the AI dropdown from /engines (Claude + any local Ollama models + Laya if running). Cached after first load.
   var ENGINES = null;
   function populateEngines(){
     var sel = document.getElementById('engineSel'); if(!sel) return;
@@ -294,16 +294,19 @@
     var engQ = '&engine=' + encodeURIComponent(em[0] || 'claude') + (em[1] ? '&model=' + encodeURIComponent(em[1]) : '');
     var jsel = document.getElementById('judgeSel');
     var judgeQ = '&judge=' + encodeURIComponent((jsel && jsel.value) || 'safety');
-    var idx=0, finished=0, match=0, scored=0, CONC=4;
+    var idx=0, finished=0, match=0, scored=0, CONC=4, t0=performance.now();
     function update(){
+      var secs = ((performance.now() - t0) / 1000).toFixed(1);
       score.textContent = 'agreement: ' + match + '/' + scored
-        + (finished===T.length ? (' (' + (scored?Math.round(100*match/scored):0) + '%)') : '');
+        + (finished===T.length ? (' (' + (scored?Math.round(100*match/scored):0) + '%) · '
+           + T.length + ' traces in ' + secs + ' s') : ' · ' + secs + ' s…');
     }
-    function fill(tr, verdict, reason){
+    function fill(tr, verdict, reason, ms){
       var g = goldOf(tr), row = document.getElementById('ev-' + tr.trace_id);
       if(!row) return;
       var j = row.querySelector('.evjudge'); j.textContent = verdict||'—'; j.className = 'evjudge ' + vcls(verdict);
-      var jr = row.querySelector('.evjreason'); if(jr) jr.textContent = reason || '';
+      var jr = row.querySelector('.evjreason');
+      if(jr) jr.textContent = (reason || '') + (ms != null ? ' · ' + Math.round(ms) + ' ms' : '');
       var m = row.querySelector('.evmatch');
       if(g && (verdict==='pass' || verdict==='fail')){
         scored++; var ok = (verdict===g); if(ok) match++;
@@ -318,7 +321,7 @@
       var u = '/judge' + (currentSource ? ('?source=' + encodeURIComponent(currentSource) + '&') : '?')
             + 'trace=' + encodeURIComponent(tr.trace_id) + engQ + judgeQ;
       fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
-        .then(function(res){ fill(tr, res.verdict, res.reason); })
+        .then(function(res){ fill(tr, res.verdict, res.reason, res.ms); })
         .catch(function(){ fill(tr, 'error', ''); })
         .then(function(){
           finished++;

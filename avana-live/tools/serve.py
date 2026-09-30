@@ -15,7 +15,7 @@ Your pass/fail labels, reasons, and tags are saved to <dir>/annotations.json via
 why, and tag/categorize it. Tags start from the trace's auto tags and are editable; your
 saved tags override them. Nothing is written back to the trace files themselves.
 """
-import json, os, sys, glob, tempfile, importlib.util
+import json, os, sys, glob, tempfile, time, importlib.util
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -38,7 +38,7 @@ JUDGE_SCRATCH = tempfile.mkdtemp(prefix="avana-judge-")
 
 
 def engines_available():
-    """LLMs the UI can judge with: Claude (always) + any local Ollama models."""
+    """LLMs the UI can judge with: Claude (always) + any local Ollama models + Laya if running."""
     out = [{"engine": "claude", "model": judge.CLAUDE_MODEL, "label": "Claude (%s)" % judge.CLAUDE_MODEL}]
     try:
         import urllib.request
@@ -49,6 +49,12 @@ def engines_available():
                 out.append({"engine": "ollama", "model": name, "label": "Ollama · " + name})
     except Exception:
         pass                                            # ollama not running → Claude only
+    try:
+        import urllib.request
+        urllib.request.urlopen(judge.LAYA_URL + "/health", timeout=2)
+        out.append({"engine": "laya", "model": judge.LAYA_MODEL, "label": "Laya · local (System 1)"})
+    except Exception:
+        pass                                            # laya not running → hide it
     return out
 
 
@@ -214,9 +220,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not t:
                     self._send(404, json.dumps({"error": "no such trace"}), "application/json")
                     return
+                t0 = time.perf_counter()
                 v = judge.judge(t, JUDGE_SCRATCH, engine, model, judge_name)  # tags ignored here
+                ms = (time.perf_counter() - t0) * 1000
                 self._send(200, json.dumps({"trace_id": tid, "verdict": v.get("verdict"),
-                                            "reason": v.get("reason", "")}), "application/json")
+                                            "reason": v.get("reason", ""), "ms": ms}), "application/json")
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}), "application/json")
             return

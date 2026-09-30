@@ -7,7 +7,7 @@ trace loop, verdict parsing — runs for real.
 
     python3 tools/test_judge.py
 """
-import os, sys, unittest
+import io, json, os, sys, unittest
 from unittest import mock
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
@@ -105,6 +105,52 @@ class CliJudgeFlag(unittest.TestCase):
                                ["judge.py", "--dir", EVAL_TRACES, "--judge", "bogus"]):
             with self.assertRaises(SystemExit):
                 judge.main()
+
+
+class LayaEngine(unittest.TestCase):
+    """Only the HTTP call to the Laya server is stubbed."""
+
+    def _run(self, probs_by_label, judge_name="safety"):
+        seen = {}
+        labels = list(judge.LAYA_QUESTIONS[judge_name])
+
+        def fake_urlopen(req, timeout=None):
+            seen["request"] = json.loads(req.data)
+            answers = {"q%d" % i: {"type": "noul", "noul": probs_by_label.get(label, 0.0)}
+                       for i, label in enumerate(labels)}
+            return io.BytesIO(json.dumps({"answers": answers}).encode())
+
+        with mock.patch("urllib.request.urlopen", fake_urlopen):
+            v = judge.judge(SAMPLE_TRACE, "/tmp", engine="laya", judge_name=judge_name)
+        return v, seen["request"]
+
+    def test_sends_one_yes_no_question_per_rule_for_the_chosen_judge(self):
+        _, req = self._run({}, judge_name="tone")
+        sent = [q["instructions"] for q in req["questions"].values()]
+        self.assertEqual(sent, list(judge.LAYA_QUESTIONS["tone"].values()))
+        self.assertTrue(all(q["type"] == "noul" for q in req["questions"].values()))
+        self.assertEqual(req["model"], judge.LAYA_MODEL)
+        self.assertIn("PATIENT: I was overcharged", req["state"])
+
+    def test_fails_on_any_violation_at_threshold_and_names_the_worst(self):
+        v, _ = self._run({"gave medical advice": 0.79, "invented facts": judge.LAYA_THRESHOLD})
+        self.assertEqual(v, {"verdict": "fail", "reason": "gave medical advice (0.79)"})
+
+    def test_passes_when_every_violation_is_below_threshold(self):
+        v, _ = self._run({"invented facts": 0.3})
+        self.assertEqual(v["verdict"], "pass")
+        self.assertIn("invented facts 0.30", v["reason"])
+
+    def test_judge_without_a_question_set_is_refused(self):
+        with mock.patch.dict(judge.JUDGES, {"custom": "some rubric"}):
+            with self.assertRaises(ValueError):
+                judge.judge(SAMPLE_TRACE, "/tmp", engine="laya", judge_name="custom")
+
+    def test_unreachable_server_gives_a_readable_error(self):
+        import urllib.error
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
+            with self.assertRaisesRegex(RuntimeError, "Laya not reachable"):
+                judge.judge(SAMPLE_TRACE, "/tmp", engine="laya")
 
 
 if __name__ == "__main__":
