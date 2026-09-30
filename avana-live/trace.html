@@ -140,6 +140,7 @@
   var wrap = document.getElementById('wrap');
   var served = location.protocol.indexOf('http') === 0;  // running under serve.py?
   var currentSource = '';   // which data folder we're viewing (set from /sources)
+  var pendingReplay = null; // saved run to open once its data source has loaded (replay may switch source)
   var timeOnly = function(iso){ return String(iso).slice(11,19); };
   var esc = function(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); };
   // minimal markdown for chat bubbles: **bold** and `code` (text is escaped first)
@@ -286,11 +287,15 @@
     loadEngines(function(){ drawChips(); drawAll(); });
   }
 
+  var ENGINE_WAITERS = null;
   function loadEngines(cb){
     if(ENGINES){ cb(); return; }
+    if(ENGINE_WAITERS){ ENGINE_WAITERS.push(cb); return; }   // already fetching: run cb when it lands
+    ENGINE_WAITERS = [cb];
+    function done(list){ ENGINES = list; var w = ENGINE_WAITERS; ENGINE_WAITERS = null; w.forEach(function(f){ f(); }); }
     fetch('/engines', {cache:'no-store'}).then(function(r){ return r.json(); })
-      .then(function(d){ ENGINES = d.engines || []; cb(); })
-      .catch(function(){ ENGINES = []; cb(); });
+      .then(function(d){ done(d.engines || []); })
+      .catch(function(){ done([]); });
   }
 
   function drawChips(){
@@ -311,18 +316,28 @@
     var sel = document.getElementById('runSel'); if(!sel) return;
     fetch('/runs', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
       sel.innerHTML = '<option value="">— live —</option>' + (d.runs||[]).map(function(r){
-        return '<option value="' + escA(r.id) + '">' + esc(r.id + ' · ' + (r.engines||[]).length + ' engines') + '</option>'; }).join('');
+        return '<option value="' + escA(r.id) + '">' + esc(r.id + ' · ' + (r.source==='eval-traces' ? 'Eval dataset' : r.source==='live' ? 'Live sessions' : (r.source||'?')) + ' · ' + (r.engines||[]).length + ' engines') + '</option>'; }).join('');
       if(REPLAY) sel.value = REPLAY.id;
+      if(pendingReplay){ sel.value = pendingReplay; pendingReplay = null; sel.onchange(); }
     }).catch(function(){});
     sel.onchange = function(){
       if(!sel.value){ REPLAY = null; RESULTS = {}; TIMING = {}; drawAll(); return; }
       fetch('/runs?id=' + encodeURIComponent(sel.value), {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(run){
-        REPLAY = {id: sel.value, saved: run.saved, judge: run.judge};
-        RESULTS = run.results || {}; TIMING = run.timing || {};
-        (run.engines||[]).forEach(function(e){ if(!engByKey(ekey(e))) ENGINES.push(e); });   // replay engines that are offline now
-        SELECTED = {}; (run.engines||[]).forEach(function(e){ SELECTED[ekey(e)] = true; });
-        var js = document.getElementById('judgeSel'); if(js && run.judge) js.value = run.judge;
-        drawChips(); drawAll();
+        if(run.source && run.source !== currentSource){
+          // The run was of a different data source (e.g. Eval dataset vs Live sessions): switch to
+          // it, and reopen this replay once its traces have loaded (loading rebuilds the page).
+          pendingReplay = sel.value; currentSource = run.source;
+          var ss = document.getElementById('sourceSel'); if(ss) ss.value = run.source;
+          load(); return;
+        }
+        loadEngines(function(){        // the engine list may still be loading: wait for it
+          REPLAY = {id: sel.value, saved: run.saved, judge: run.judge};
+          RESULTS = run.results || {}; TIMING = run.timing || {};
+          (run.engines||[]).forEach(function(e){ if(!engByKey(ekey(e))) ENGINES.push(e); });   // replay engines that are offline now
+          SELECTED = {}; (run.engines||[]).forEach(function(e){ SELECTED[ekey(e)] = true; });
+          var js = document.getElementById('judgeSel'); if(js && run.judge) js.value = run.judge;
+          drawChips(); drawAll();
+        });
       });
     };
   }
@@ -620,7 +635,8 @@
       + '<div class="bubble b-asst"><div class="role"><span>Avana</span></div>'+md(e.text)+'</div></div>';
   }
 
-  render(current);
+  if(pendingReplay && served){ evalMode = true; evalBtn.classList.add('on'); renderEval(); }
+  else render(current);
   } // end start()
 
   initSources();
