@@ -62,6 +62,35 @@
   .verdot.pass{color:var(--green)} .verdot.fail{color:var(--red)} .verdot.none{color:var(--muted)}
   .badge{font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
   .wrap{max-width:880px;padding:20px 26px 80px}
+  /* mega judge eval */
+  .wrap.wide{max-width:none}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .chip{font-size:12px;border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:4px 10px;cursor:pointer;color:var(--muted);user-select:none}
+  .chip.on{border-color:var(--accent);color:var(--ink);background:var(--panel2)}
+  .chip input{margin:0 3px 0 0;vertical-align:-1px}
+  .chip .kind{font-size:10.5px;color:var(--muted);margin-left:3px}
+  .sb,.mega{border-collapse:collapse;font-size:12.5px;margin-bottom:16px}
+  .sb th,.sb td,.mega th,.mega td{padding:5px 9px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+  .sb th,.mega th{color:var(--muted);font-size:11px;font-weight:600;position:sticky;top:0;background:var(--bg)}
+  .sb td.sbl,.mega td.tn{text-align:left;color:var(--muted)}
+  .sb td{font-family:ui-monospace,Menlo,monospace}
+  .sb .q{font-size:10px;opacity:.6}
+  .mega td.tn{max-width:260px;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+  .mega td.tn b{color:var(--ink);font-family:ui-monospace,Menlo,monospace;font-weight:600}
+  .mega td.mc{cursor:pointer;font-weight:700;min-width:64px;color:var(--muted)}
+  .mega td.mc.ok{background:rgba(123,211,137,.16);color:var(--green)}
+  .mega td.mc.bad{background:rgba(242,119,143,.24);color:#fff}
+  .mega td.mc.err{color:#f5c26b}
+  .mega td.mc.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  .mega td.mc .ms{display:block;font-weight:400;font-size:10px;color:var(--muted)}
+  .replay{background:#2a2410;border:1px solid #6b5a1e;color:#f5d98a;border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:12.5px}
+  .insp{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:30px}
+  .insph{font-size:13px;margin-bottom:8px}
+  .insph .x{float:right;cursor:pointer;color:var(--muted)}
+  .panes{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .panes pre{max-height:420px;white-space:pre-wrap;word-break:break-word}
+  .seclbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:4px 0 3px}
+
   .empty{color:var(--muted);padding:40px 26px;max-width:680px}
   .empty code,.empty pre{background:var(--panel);padding:2px 6px;border-radius:5px}
   .context{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:8px}
@@ -184,7 +213,7 @@
     el.innerHTML = '<div class="sc">' + verdotHTML(tr) + esc(tr.scenario) + '</div><div class="pe">' + esc(tr.trace_id) + '</div>'
       + '<div style="margin-top:7px" id="sidetags-' + esc(tr.trace_id) + '">' + tagSpans(tagsFor(tr)) + '</div>';
     el.onclick = function(){
-      if(evalMode){ evalMode=false; if(evalBtn) evalBtn.classList.remove('on'); }  // leave the eval grid
+      if(evalMode){ evalMode=false; wrap.classList.remove('wide'); if(evalBtn) evalBtn.classList.remove('on'); }  // leave the eval grid
       var items = document.querySelectorAll('.trace-item');
       for(var k=0;k<items.length;k++) items[k].classList.remove('active');
       el.classList.add('active');
@@ -216,7 +245,7 @@
   evalBtn.onclick = function(){
     evalMode = !evalMode;
     evalBtn.classList.toggle('on', evalMode);
-    if(evalMode) renderEval(); else render(current);
+    if(evalMode) renderEval(); else { wrap.classList.remove('wide'); render(current); }
   };
   // gold verdict/reason = your saved label, else the trace's suggested one (pass/fail only)
   function goldOf(tr){ return (tr.annotation && tr.annotation.verdict) || (tr.suggested && tr.suggested.verdict) || null; }
@@ -226,34 +255,183 @@
   }
   function vcls(v){ return v==='pass' ? 'vpass' : v==='fail' ? 'vfail' : 'vwait'; }
 
+  // ── Mega judge eval: every engine side by side on the same traces vs the golden verdicts ──
+  // One row per trace, one narrow column per engine. Scoreboard: agreement (vs the "always
+  // fail" baseline), misses, false alarms, time and estimated cost. Click any cell to see
+  // exactly what that engine was sent and what it returned. Runs are saved and replayable.
+  var escA = function(s){ return esc(s).replace(/"/g,'&quot;'); };
+  var ENGINES = null, SELECTED = null, RESULTS = {}, TIMING = {}, REPLAY = null, INSPECT = null;
+  var DEFAULT_ON = {baseline:1, laya:1, jev:1};
+  function ekey(e){ return e.engine + '|' + (e.model||''); }
+  function engByKey(k){ return (ENGINES||[]).filter(function(e){ return ekey(e)===k; })[0]; }
+
   function renderEval(){
-    document.getElementById('scTitle').textContent = 'Judge vs. golden set';
-    document.getElementById('scIds').textContent = T.length + ' trace(s) · comparing pass/fail only';
+    wrap.classList.add('wide');
+    document.getElementById('scTitle').textContent = 'Mega judge eval: every engine vs. the golden set';
+    document.getElementById('scIds').textContent = T.length + ' trace(s) · pass/fail vs gold · click a cell to see what the engine saw';
     if(!served){
       wrap.innerHTML = '<div class="empty">Judge eval needs the server — run <code>python3 tools/serve.py</code> and open the localhost URL.</div>';
       return;
     }
-    var rows = T.map(function(tr){
-      var g = goldOf(tr);
-      return '<tr id="ev-' + esc(tr.trace_id) + '"><td>' + esc(tr.scenario||tr.trace_id)
-        + '<div class="evid">' + esc(tr.trace_id) + '</div></td>'
-        + '<td><span class="' + vcls(g) + '">' + (g||'—') + '</span>'
-        + '<div class="evreason">' + esc(goldReasonOf(tr)) + '</div></td>'
-        + '<td><span class="evjudge vwait">—</span><div class="evreason evjreason"></div></td>'
-        + '<td class="evmatch vwait">…</td></tr>';
-    }).join('');
     wrap.innerHTML = '<div class="evalhead"><span class="badge">Judge:</span>'
       + '<select class="btn" id="judgeSel"><option>loading…</option></select>'
-      + '<span class="badge">AI:</span>'
-      + '<select class="btn" id="engineSel"><option>loading…</option></select>'
-      + '<button class="btn" id="runEval">▶ Run judge on all</button>'
-      + '<span class="badge" id="evalScore"></span>'
-      + '<span class="badge">✓ match = green · ✗ mismatch = red</span></div>'
-      + '<table class="evaltable"><thead><tr><th>Trace</th><th>Golden</th><th>Judge</th><th>Match</th></tr></thead><tbody>'
-      + rows + '</tbody></table>';
-    document.getElementById('runEval').onclick = runEvalAll;
+      + '<button class="btn on" id="runEval">▶ Run selected</button>'
+      + '<span class="badge">Replay:</span><select class="btn" id="runSel"><option value="">— live —</option></select>'
+      + '<span class="badge" id="evalStatus"></span></div>'
+      + '<div class="chips" id="engChips">loading engines…</div>'
+      + '<div id="replayNote"></div><div id="scoreboard"></div><div id="megaGrid"></div><div id="inspector"></div>';
+    document.getElementById('runEval').onclick = runMega;
     populateJudges();
-    populateEngines();
+    populateRuns();
+    loadEngines(function(){ drawChips(); drawAll(); });
+  }
+
+  function loadEngines(cb){
+    if(ENGINES){ cb(); return; }
+    fetch('/engines', {cache:'no-store'}).then(function(r){ return r.json(); })
+      .then(function(d){ ENGINES = d.engines || []; cb(); })
+      .catch(function(){ ENGINES = []; cb(); });
+  }
+
+  function drawChips(){
+    if(!SELECTED){ SELECTED = {}; ENGINES.forEach(function(e){
+      if(DEFAULT_ON[e.engine] || e.model==='claude-sonnet-5') SELECTED[ekey(e)] = true; }); }
+    document.getElementById('engChips').innerHTML = ENGINES.map(function(e){
+      var k = ekey(e);
+      return '<label class="chip' + (SELECTED[k]?' on':'') + '" title="' + escA(e.kind + ' · ' + e.price_note) + '">'
+        + '<input type="checkbox" data-k="' + escA(k) + '"' + (SELECTED[k]?' checked':'') + '> '
+        + esc(e.label) + ' <span class="kind">' + esc(e.kind) + '</span></label>';
+    }).join('');
+    Array.prototype.forEach.call(document.querySelectorAll('#engChips input'), function(cb){
+      cb.onchange = function(){ SELECTED[cb.getAttribute('data-k')] = cb.checked; cb.parentNode.classList.toggle('on', cb.checked); drawAll(); };
+    });
+  }
+
+  function populateRuns(){
+    var sel = document.getElementById('runSel'); if(!sel) return;
+    fetch('/runs', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+      sel.innerHTML = '<option value="">— live —</option>' + (d.runs||[]).map(function(r){
+        return '<option value="' + escA(r.id) + '">' + esc(r.id + ' · ' + (r.engines||[]).length + ' engines') + '</option>'; }).join('');
+      if(REPLAY) sel.value = REPLAY.id;
+    }).catch(function(){});
+    sel.onchange = function(){
+      if(!sel.value){ REPLAY = null; RESULTS = {}; TIMING = {}; drawAll(); return; }
+      fetch('/runs?id=' + encodeURIComponent(sel.value), {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(run){
+        REPLAY = {id: sel.value, saved: run.saved, judge: run.judge};
+        RESULTS = run.results || {}; TIMING = run.timing || {};
+        (run.engines||[]).forEach(function(e){ if(!engByKey(ekey(e))) ENGINES.push(e); });   // replay engines that are offline now
+        SELECTED = {}; (run.engines||[]).forEach(function(e){ SELECTED[ekey(e)] = true; });
+        var js = document.getElementById('judgeSel'); if(js && run.judge) js.value = run.judge;
+        drawChips(); drawAll();
+      });
+    };
+  }
+
+  function cols(){ return (ENGINES||[]).filter(function(e){ return SELECTED && SELECTED[ekey(e)]; }); }
+  function fmtMs(ms){ return ms==null ? '—' : ms < 1000 ? Math.round(ms) + ' ms' : (ms/1000).toFixed(1) + ' s'; }
+  function fmtUsd(x){ return x==null ? '—' : x===0 ? '$0' : x < 0.01 ? '$' + x.toFixed(5) : '$' + x.toFixed(x < 1 ? 3 : 2); }
+  function median(a){ if(!a.length) return null; a = a.slice().sort(function(x,y){return x-y;}); var m=a.length>>1; return a.length%2?a[m]:(a[m-1]+a[m])/2; }
+
+  function stats(k){
+    var R = RESULTS[k] || {}, s = {n:0, agree:0, miss:0, fa:0, err:0, gfail:0, ms:[], cost:0, tin:0, tout:0};
+    T.forEach(function(tr){
+      var r = R[tr.trace_id], g = goldOf(tr); if(!r) return;
+      if(r.error){ s.err++; return; }
+      s.ms.push(r.ms||0); s.cost += r.cost_usd||0; s.tin += r.tokens_in||0; s.tout += r.tokens_out||0;
+      if(!g) return;
+      s.n++; if(g==='fail') s.gfail++; if(r.verdict===g) s.agree++; else if(g==='fail') s.miss++; else s.fa++;
+    });
+    return s;
+  }
+
+  function drawAll(){ drawScoreboard(); drawGrid(); drawReplayNote(); }
+
+  function drawReplayNote(){
+    var el = document.getElementById('replayNote'); if(!el) return;
+    el.innerHTML = REPLAY ? '<div class="replay">⏪ Replay of saved run <b>' + esc(REPLAY.id) + '</b> (saved ' + esc(REPLAY.saved||'') + '). Nothing is being re-run; pick "— live —" to run fresh.</div>' : '';
+  }
+
+  function drawScoreboard(){
+    var el = document.getElementById('scoreboard'); if(!el) return;
+    var C = cols(); if(!C.length){ el.innerHTML = '<div class="empty">Tick at least one engine.</div>'; return; }
+    var base = stats('baseline|');
+    var gtotal = T.filter(function(tr){ return goldOf(tr); }).length;
+    var gfail = T.filter(function(tr){ return goldOf(tr)==='fail'; }).length;
+    var rows = [
+      ['Agreement', function(s){ return s.n ? s.agree + '/' + s.n + ' (' + Math.round(100*s.agree/s.n) + '%)' : '—'; },
+        'Traces where the engine\'s pass/fail equals the golden label, out of those with a gold label and a result.'],
+      ['vs always-fail', function(s){ if(!s.n) return '—'; var d = s.agree - s.gfail; return (d>0?'+':'') + d; },
+        'Agreement minus what a judge that always says "fail" would score on the same traces (' + gfail + '/' + gtotal + ' on the full set). 0 or less = no better than guessing.'],
+      ['Missed fails', function(s){ return s.n ? String(s.miss) : '—'; },
+        'Gold says FAIL but the engine said pass: the dangerous error (a real violation slips through).'],
+      ['False alarms', function(s){ return s.n ? String(s.fa) : '—'; },
+        'Gold says PASS but the engine said fail: noise a human has to clear.'],
+      ['Total time', function(s, k){ return TIMING[k] ? fmtMs(TIMING[k].wall_ms) : '—'; },
+        'Wall-clock from the engine\'s first request to its last answer, with its requests running in parallel Cloud engines send requests in parallel; Laya and the Ollama models share this Mac\'s GPU, so they run one request at a time, one engine after another.'],
+      ['Median / trace', function(s){ return fmtMs(median(s.ms)); },
+        'Median time for one trace: the full round trip, including Claude Code start-up for Claude.'],
+      ['Tokens in / out', function(s){ return s.ms.length ? s.tin.toLocaleString() + ' / ' + s.tout.toLocaleString() : '—'; },
+        'Tokens actually sent and returned, as reported by each engine (Claude: minus Claude Code\'s fixed per-call overhead).'],
+      ['Est. cost (run)', function(s){ return s.ms.length ? fmtUsd(s.cost) : '—'; },
+        'Tokens × list price. Local engines $0 (electricity not counted). Claude = API-equivalent: you pay via Max.'],
+      ['Per 1M traces', function(s){ return s.ms.length ? fmtUsd(s.cost / s.ms.length * 1e6) : '—'; },
+        'This run\'s cost ÷ traces judged × 1,000,000: what judging a million production conversations would cost at list price.']
+    ];
+    var head = '<tr><th></th>' + C.map(function(e){ var k=ekey(e), s=stats(k), err = s.err ? ' <span class="vfail" title="errors">⚠' + s.err + '</span>' : '';
+      return '<th title="' + escA(e.kind + ' · ' + e.price_note) + '">' + esc(e.label) + err + '</th>'; }).join('') + '</tr>';
+    var body = rows.map(function(r){
+      return '<tr><td class="sbl" title="' + escA(r[2]) + '">' + esc(r[0]) + ' <span class="q">ⓘ</span></td>' + C.map(function(e){
+        var k = ekey(e); return '<td title="' + escA(r[2]) + '">' + esc(r[1](stats(k), k)) + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    el.innerHTML = '<table class="sb">' + head + body + '</table>';
+  }
+
+  function drawGrid(){
+    var el = document.getElementById('megaGrid'); if(!el) return;
+    var C = cols(); if(!C.length){ el.innerHTML=''; return; }
+    var head = '<tr><th>Trace</th><th>Gold</th>' + C.map(function(e){ return '<th>' + esc(e.label) + '</th>'; }).join('') + '</tr>';
+    var body = T.map(function(tr){
+      var g = goldOf(tr);
+      return '<tr><td class="tn" title="' + escA(goldReasonOf(tr)) + '"><b>' + esc(tr.trace_id) + '</b> ' + esc(tr.scenario||'') + '</td>'
+        + '<td class="' + vcls(g) + '">' + (g ? g.toUpperCase() : '—') + '</td>'
+        + C.map(function(e){
+            var k = ekey(e), r = (RESULTS[k]||{})[tr.trace_id], cls = 'mc', txt = '·', tip = 'not run yet: click to preview the request';
+            if(r && r.error){ cls += ' err'; txt = '⚠'; tip = r.error; }
+            else if(r){ var ok = g ? r.verdict===g : null; cls += ok===true ? ' ok' : ok===false ? ' bad' : '';
+              txt = (ok===true?'✓ ':ok===false?'✗ ':'') + (r.verdict==='fail'?'F':'P') + '<span class="ms">' + fmtMs(r.ms) + '</span>';
+              tip = r.verdict + ': ' + (r.reason||'') + ' · ' + fmtMs(r.ms); }
+            else if(RUNNING[k+'/'+tr.trace_id]){ txt = '…'; tip = 'running'; }
+            var sel = INSPECT && INSPECT.k===k && INSPECT.tid===tr.trace_id ? ' sel' : '';
+            return '<td class="' + cls + sel + '" data-k="' + escA(k) + '" data-t="' + escA(tr.trace_id) + '" title="' + escA(tip) + '">' + txt + '</td>';
+          }).join('') + '</tr>';
+    }).join('');
+    el.innerHTML = '<table class="mega">' + head + body + '</table>';
+    Array.prototype.forEach.call(el.querySelectorAll('td.mc'), function(td){
+      td.onclick = function(){ inspect(td.getAttribute('data-k'), td.getAttribute('data-t')); };
+    });
+  }
+
+  // "What the engine sees": exact request + raw response for one trace × engine
+  function inspect(k, tid){
+    INSPECT = {k:k, tid:tid}; drawGrid();
+    var e = engByKey(k), r = (RESULTS[k]||{})[tid], el = document.getElementById('inspector');
+    function show(req){
+      el.innerHTML = '<div class="insp"><div class="insph"><b>' + esc(e ? e.label : k) + '</b> on <b>' + esc(tid) + '</b>'
+        + (r && !r.error ? ' · ' + esc(r.verdict) + ' · ' + fmtMs(r.ms) + ' · ' + (r.tokens_in||0) + ' tokens in / ' + (r.tokens_out||0) + ' out · ' + fmtUsd(r.cost_usd)
+             + (r.api_ms ? ' · API time ' + fmtMs(r.api_ms) : '') : r && r.error ? ' · <span class="vfail">error</span>' : ' · <i>not run yet</i>')
+        + '<span class="x" id="inspX">✕</span></div>'
+        + '<div class="panes"><div><div class="seclbl">' + (r ? 'What it was sent' : 'What it would be sent') + '</div><pre>' + esc(JSON.stringify(req, null, 2)) + '</pre></div>'
+        + '<div><div class="seclbl">What it returned</div><pre>' + esc(r ? (r.error || JSON.stringify(r.response, null, 2)) : '— run this engine to see its answer —') + '</pre>'
+        + (r && r.reason ? '<div class="seclbl">Verdict reason</div><pre>' + esc(r.reason) + '</pre>' : '') + '</div></div></div>';
+      document.getElementById('inspX').onclick = function(){ INSPECT = null; el.innerHTML = ''; drawGrid(); };
+      el.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+    if(r && r.request){ show(r.request); return; }
+    var jsel = document.getElementById('judgeSel'), parts = k.split('|');
+    fetch('/request?' + (currentSource ? 'source=' + encodeURIComponent(currentSource) + '&' : '') + 'trace=' + encodeURIComponent(tid)
+          + '&engine=' + encodeURIComponent(parts[0]) + (parts[1] ? '&model=' + encodeURIComponent(parts[1]) : '')
+          + '&judge=' + encodeURIComponent((jsel && jsel.value) || 'safety'), {cache:'no-store'})
+      .then(function(x){ return x.json(); }).then(function(d){ show(d.request || d); }).catch(function(err){ show({error: String(err)}); });
   }
 
   // Fill the judge dropdown from /judges (safety, tone, …). Cached after first load.
@@ -264,72 +442,67 @@
       sel.innerHTML = (list && list.length ? list : ['safety'])
         .map(function(j){ return '<option value="' + esc(j) + '">' + esc(j.charAt(0).toUpperCase() + j.slice(1)) + '</option>'; })
         .join('');
+      if(REPLAY && REPLAY.judge) sel.value = REPLAY.judge;
     }
+    sel.onchange = function(){ if(!REPLAY){ RESULTS = {}; TIMING = {}; drawAll(); } };
     if(JUDGES){ fill(JUDGES); return; }
     fetch('/judges', {cache:'no-store'}).then(function(r){ return r.json(); })
       .then(function(d){ JUDGES = d.judges || []; fill(JUDGES); })
       .catch(function(){ fill(null); });
   }
 
-  // Fill the AI dropdown from /engines (Claude + any local Ollama models + Laya if running). Cached after first load.
-  var ENGINES = null;
-  function populateEngines(){
-    var sel = document.getElementById('engineSel'); if(!sel) return;
-    function fill(list){
-      sel.innerHTML = (list && list.length ? list : [{engine:'claude',model:'',label:'Claude'}])
-        .map(function(e){ return '<option value="' + esc(e.engine) + '|' + esc(e.model||'') + '">' + esc(e.label) + '</option>'; })
-        .join('');
+  // Run every selected engine. Cloud engines get their own lanes (Jev 8, each Claude model 4
+  // in parallel); Laya and ALL Ollama models share one local lane, one request at a time.
+  var RUNNING = {};
+  function runMega(){
+    var C = cols().slice().sort(function(a, b){ return (a.engine==='laya' ? 0 : 1) - (b.engine==='laya' ? 0 : 1); });
+    if(!C.length) return;
+    var btn = document.getElementById('runEval'), status = document.getElementById('evalStatus');
+    var judgeName = (document.getElementById('judgeSel')||{}).value || 'safety';
+    REPLAY = null; var rs = document.getElementById('runSel'); if(rs) rs.value = '';
+    RESULTS = {}; TIMING = {}; RUNNING = {}; drawAll();
+    btn.disabled = true; btn.textContent = 'Running…';
+    var t0 = performance.now(), lanes = {}, pending = 0;
+    C.forEach(function(e){
+      // Laya + every Ollama model share ONE local lane, one request at a time: they all use this
+      // Mac's GPU, so running them together slows each other down (unfair timing) and can crash
+      // Laya's Metal backend. Laya is queued first. Cloud engines (Jev, Claude) run in parallel.
+      var local = e.engine === 'laya' || e.engine.indexOf('ollama') === 0;
+      var lane = local ? 'local' : ekey(e);
+      var conc = local ? 1 : ({jev:8, claude:4, baseline:20}[e.engine] || 4);
+      lanes[lane] = lanes[lane] || {conc: conc, queue: []};
+      T.forEach(function(tr){ lanes[lane].queue.push({e:e, tr:tr}); pending++; });
+    });
+    function tick(){ status.textContent = (C.length*T.length - pending) + '/' + (C.length*T.length) + ' judged · ' + ((performance.now()-t0)/1000).toFixed(1) + ' s'; }
+    function finishOne(){
+      pending--; tick(); drawAll();
+      if(pending === 0){
+        btn.disabled = false; btn.textContent = '▶ Re-run selected';
+        status.textContent = 'done in ' + ((performance.now()-t0)/1000).toFixed(1) + ' s · saving…';
+        fetch('/runs', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({judge: judgeName, source: currentSource, engines: C, results: RESULTS, timing: TIMING})})
+          .then(function(r){ return r.json(); }).then(function(d){ status.textContent = 'done in ' + ((performance.now()-t0)/1000).toFixed(1) + ' s · saved as ' + d.id; populateRuns(); })
+          .catch(function(){ status.textContent += ' (not saved)'; });
+      }
     }
-    if(ENGINES){ fill(ENGINES); return; }
-    fetch('/engines', {cache:'no-store'}).then(function(r){ return r.json(); })
-      .then(function(d){ ENGINES = d.engines || []; fill(ENGINES); })
-      .catch(function(){ fill(null); });
-  }
-
-  function runEvalAll(){
-    var score = document.getElementById('evalScore');
-    var btn = document.getElementById('runEval'); btn.disabled = true; btn.textContent = 'Running…';
-    var sel = document.getElementById('engineSel');
-    var em = ((sel && sel.value) || 'claude|').split('|');   // [engine, model]
-    var engQ = '&engine=' + encodeURIComponent(em[0] || 'claude') + (em[1] ? '&model=' + encodeURIComponent(em[1]) : '');
-    var jsel = document.getElementById('judgeSel');
-    var judgeQ = '&judge=' + encodeURIComponent((jsel && jsel.value) || 'safety');
-    var idx=0, finished=0, match=0, scored=0, CONC=4, t0=performance.now();
-    function update(){
-      var secs = ((performance.now() - t0) / 1000).toFixed(1);
-      score.textContent = 'agreement: ' + match + '/' + scored
-        + (finished===T.length ? (' (' + (scored?Math.round(100*match/scored):0) + '%) · '
-           + T.length + ' traces in ' + secs + ' s') : ' · ' + secs + ' s…');
-    }
-    function fill(tr, verdict, reason, ms){
-      var g = goldOf(tr), row = document.getElementById('ev-' + tr.trace_id);
-      if(!row) return;
-      var j = row.querySelector('.evjudge'); j.textContent = verdict||'—'; j.className = 'evjudge ' + vcls(verdict);
-      var jr = row.querySelector('.evjreason');
-      if(jr) jr.textContent = (reason || '') + (ms != null ? ' · ' + Math.round(ms) + ' ms' : '');
-      var m = row.querySelector('.evmatch');
-      if(g && (verdict==='pass' || verdict==='fail')){
-        scored++; var ok = (verdict===g); if(ok) match++;
-        row.className = 'evrow ' + (ok ? 'ok' : 'bad');
-        m.className = 'evmatch'; m.textContent = ok ? '✓ match' : '✗ differ';
-      } else { m.className = 'evmatch vwait'; m.textContent = '—'; }
-      update();
-    }
-    function worker(){
-      if(idx >= T.length) return;
-      var tr = T[idx++];
-      var u = '/judge' + (currentSource ? ('?source=' + encodeURIComponent(currentSource) + '&') : '?')
-            + 'trace=' + encodeURIComponent(tr.trace_id) + engQ + judgeQ;
+    function worker(lane){
+      var job = lanes[lane].queue.shift(); if(!job) return;
+      var e = job.e, tr = job.tr, k = ekey(e);
+      TIMING[k] = TIMING[k] || {start: performance.now()};
+      RUNNING[k+'/'+tr.trace_id] = 1; drawGrid();
+      var u = '/judge?' + (currentSource ? 'source=' + encodeURIComponent(currentSource) + '&' : '') + 'trace=' + encodeURIComponent(tr.trace_id)
+            + '&engine=' + encodeURIComponent(e.engine) + (e.model ? '&model=' + encodeURIComponent(e.model) : '') + '&judge=' + encodeURIComponent(judgeName);
       fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
-        .then(function(res){ fill(tr, res.verdict, res.reason, res.ms); })
-        .catch(function(){ fill(tr, 'error', ''); })
+        .then(function(res){ (RESULTS[k] = RESULTS[k] || {})[tr.trace_id] = res.error ? {error: res.error} : res; })
+        .catch(function(err){ (RESULTS[k] = RESULTS[k] || {})[tr.trace_id] = {error: String(err)}; })
         .then(function(){
-          finished++;
-          if(finished === T.length){ btn.disabled=false; btn.textContent='▶ Re-run judge on all'; update(); }
-          else worker();
+          delete RUNNING[k+'/'+tr.trace_id];
+          TIMING[k].wall_ms = performance.now() - TIMING[k].start;
+          finishOne(); worker(lane);
         });
     }
-    for(var i=0;i<Math.min(CONC, T.length);i++) worker();
+    tick();
+    Object.keys(lanes).forEach(function(l){ for(var i=0;i<lanes[l].conc;i++) worker(l); });
   }
 
   // In patient view, hide everything that isn't the conversation itself.

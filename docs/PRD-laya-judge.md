@@ -71,3 +71,55 @@ Claude and Ollama read a prose rubric and write back a JSON verdict. Laya genera
 - [x] The Judge-eval grid shows per-trace and total time for all engines.
 - [x] `python3 tools/test_judge.py` passes (existing and new tests).
 - [x] Measured agreement and timing for Claude and Laya are recorded in the README.
+
+---
+
+# Iteration 2: the mega judge eval (draft, awaiting approval, 2026-09-30)
+
+Same branch (`add-laya-judge`, PR #2). It borrows the engine lineup, Max-plan Claude calls and price basis from the PawPal head-to-head (`/Users/elise/Repos/AISummit/laya-demo`), which Elise already demos, so both demos tell the same story with the same numbers.
+
+## 8. Goal
+One screen that runs **every judge engine side by side** on the same 20 gold traces and shows, per engine: **how well** (agreement with gold, next to the "always fail" baseline), **how fast** (total and per trace), and **what it would cost** (this run, and projected per 1M traces). A second view shows **exactly what each engine is sent and what it returns**, like the Laya playground's request/response panes.
+
+## 9. Engines (the columns)
+| Engine | Kind | How it runs | Cost basis (prices as of 2026-09-28, from PawPal `config.py`) |
+|---|---|---|---|
+| Laya | System 1, local | local server `LAYA_URL` | $0 (runs on this laptop) |
+| **Jev** | System 1, cloud | `POST https://api.typesafe.ai/v1/systemone`, **the same payload as Laya** (same yes/no questions) | $0.042 per 1M input tokens, output free; tokens from Jev's `usage` |
+| Claude Sonnet 5 / Opus 5.5 / Fable 5.1 | LLM, cloud | `claude -p` with the **Max-plan login**; API-key env vars are stripped, exactly as PawPal does | Shown as an **API-equivalent estimate** ($2/$10, $4/$20, $10/$50 per 1M in/out) from real token counts; the Max plan pays, not the API |
+| Ollama models | LLM, local | existing Ollama engine; every installed chat model is offered | $0 (local) |
+| *Always fail* | baseline | no model | $0, 0 s |
+
+- **Jev key:** read from `TYPESAFE_API_KEY`, or from a git-ignored `avana-live/.env` (same format as PawPal's). Never sent to the browser, logged, or committed.
+- **New local models (optional, Elise to pick; downloads are large):** `nimble` (Bespoke Labs 9b, a System 1 classifier) and `tev1` (Together AI, fast classifier), which run on the same yes/no questions as Laya and Jev if their API allows it, otherwise as prompt judges; `granite4.1-guardian` (IBM 8b safety/judging model); `qwen3.8:27b` and `gemma4:31b` (strongest general models that fit comfortably in 128 GB).
+
+## 10. The mega judge eval view (replaces today's Judge-eval grid)
+- **Compact and horizontal:** one row per trace, one narrow column per engine. Each cell shows a ✓ or ✗ against gold, colored; hover shows the verdict, reason and time.
+- **Top controls:** Judge (Safety / Tone), engine checkboxes, **▶ Run selected**. Engines run in parallel; each column fills as it finishes.
+- **Scoreboard row per engine:** agreement (x/20 and %), Δ vs "always fail", misses (gold fail → judged pass), false alarms, total time, median ms per trace, est. cost this run, est. cost per 1M traces.
+- **Runs are saved** to `avana-live/runs/<timestamp>.json` (git-ignored) and can be **replayed**, clearly labeled, as the Wi-Fi-dies fallback and to pre-bake the slow engines.
+
+## 11. The "what each engine sees" view
+Pick a trace and an engine to see two panes: the **exact request** (Laya/Jev: the JSON `state` + `questions`; LLMs: the system rubric + the transcript prompt) and the **raw response** (the probabilities per question, or the LLM's JSON), plus the tokens counted and the time.
+
+## 12. Timing and cost rules (shown on screen as "how we measured")
+- Time = wall-clock around each engine call. Claude also shows its API time, since part of `claude -p`'s time is CLI start-up.
+- Cost = tokens actually sent × list price. Local engines are $0 (electricity not counted). Claude's figure is labeled "API-equivalent; you pay via Max".
+- Per-1M projection = this run's cost ÷ 20 × 1,000,000.
+
+## 13. Out of scope
+Changing the gold labels or rubrics; new Python dependencies (stdlib only); running engines automatically on the SessionEnd hook.
+
+## 14. Risks
+- **Max plan vs `claude -p`:** the June build notes say headless `claude -p` draws from a separate metered pool since mid-June 2026. PawPal assumes Max covers it. Check the Claude usage page after the first run; if it's metered, run Claude once and replay it.
+- **Opus/Fable runs are slower**: expect about 1–3 minutes per 20 traces with 4 in parallel. Pre-bake them for stage and replay.
+- **Big Ollama models** can take minutes per run; the same replay approach applies.
+
+## 15. Acceptance criteria
+- [ ] One click runs any mix of Laya, Jev, Claude ×3, Ollama models and the baseline on 20 traces, and fills a compact grid plus the scoreboard.
+- [ ] Every scoreboard number has a hover showing how it was calculated.
+- [ ] The "what it sees" view shows the exact request and response for any trace × engine.
+- [ ] Runs save and replay.
+- [ ] The Jev key never leaves the server; `.env` is git-ignored.
+- [ ] Tests cover the Jev engine, cost maths, and the baseline; all tests pass.
+- [ ] README results table updated with a full measured run.

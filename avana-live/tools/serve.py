@@ -38,23 +38,52 @@ JUDGE_SCRATCH = tempfile.mkdtemp(prefix="avana-judge-")
 
 
 def engines_available():
-    """LLMs the UI can judge with: Claude (always) + any local Ollama models + Laya if running."""
-    out = [{"engine": "claude", "model": judge.CLAUDE_MODEL, "label": "Claude (%s)" % judge.CLAUDE_MODEL}]
+    """Every engine the mega judge eval can run, with its kind and price basis. Engines whose
+    backend isn't reachable (Laya server down, no Jev key, Ollama off) are simply left out."""
+    import shutil, urllib.request
+
+    def entry(engine, model, label, kind):
+        return {"engine": engine, "model": model, "label": label, "kind": kind,
+                "price_note": judge.price(engine, model)[2]}
+
+    out = [entry("baseline", "", "Always fail", "Baseline · no model")]
     try:
-        import urllib.request
-        tags = json.load(urllib.request.urlopen(judge.OLLAMA_URL + "/api/tags", timeout=2))
-        for m in tags.get("models", []):
-            name = m.get("name", "")
-            if name and "embed" not in name:           # skip embedding models — can't judge
-                out.append({"engine": "ollama", "model": name, "label": "Ollama · " + name})
-    except Exception:
-        pass                                            # ollama not running → Claude only
-    try:
-        import urllib.request
         urllib.request.urlopen(judge.LAYA_URL + "/health", timeout=2)
-        out.append({"engine": "laya", "model": judge.LAYA_MODEL, "label": "Laya · local (System 1)"})
+        out.append(entry("laya", judge.LAYA_MODEL, "Laya", "System 1 · local"))
     except Exception:
         pass                                            # laya not running → hide it
+    if judge.jev_configured():
+        out.append(entry("jev", judge.JEV_MODEL, "Jev", "System 1 · cloud"))
+    if shutil.which("claude"):
+        for model, (label, _, _) in judge.CLAUDE_MODELS.items():
+            out.append(entry("claude", model, label, "LLM · cloud (Max plan)"))
+    try:
+        tags = json.load(urllib.request.urlopen(judge.OLLAMA_URL + "/api/tags", timeout=2))
+        for m in sorted(tags.get("models", []), key=lambda m: m.get("name", "")):
+            name = m.get("name", "")
+            if not name or "embed" in name or "cloud" in name:   # can't judge / not local
+                continue
+            if judge.is_ollama_system1(name):                    # nimble, tev1: typed questions
+                out.append(entry("ollama-s1", name, name, "System 1 · local (Ollama)"))
+            else:
+                out.append(entry("ollama", name, name, "LLM · local (Ollama)"))
+    except Exception:
+        pass                                            # ollama not running → skip
+    return out
+
+
+RUNS = os.path.join(ROOT, "runs")                   # saved mega-eval runs (git-ignored)
+
+
+def list_runs():
+    out = []
+    for f in sorted(glob.glob(os.path.join(RUNS, "*.json")), reverse=True):
+        try:
+            d = json.load(open(f))
+            out.append({"id": os.path.basename(f)[:-5], "saved": d.get("saved"), "judge": d.get("judge"),
+                        "source": d.get("source"), "engines": [e.get("label") for e in d.get("engines", [])]})
+        except Exception:
+            pass
     return out
 
 
@@ -205,6 +234,33 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}), "application/json")
             return
+        if path == "/request":                     # what an engine WOULD be sent (no call made)
+            try:
+                s = self._source()
+                q = parse_qs(urlparse(self.path).query)
+                t = next((x for x in build(s["dir"]) if x.get("trace_id") == (q.get("trace") or [None])[0]), None)
+                if not t:
+                    self._send(404, json.dumps({"error": "no such trace"}), "application/json")
+                    return
+                req = judge.build_request(t, (q.get("engine") or ["claude"])[0], (q.get("model") or [None])[0],
+                                          (q.get("judge") or [judge.DEFAULT_JUDGE])[0])
+                self._send(200, json.dumps({"request": req}), "application/json")
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)}), "application/json")
+            return
+        if path == "/runs":                        # saved mega-eval runs: list, or ?id= to load one
+            q = parse_qs(urlparse(self.path).query)
+            rid = (q.get("id") or [None])[0]
+            if not rid:
+                self._send(200, json.dumps({"runs": list_runs()}), "application/json")
+                return
+            f = os.path.join(RUNS, os.path.basename(rid) + ".json")
+            if not os.path.exists(f):
+                self._send(404, json.dumps({"error": "no such run"}), "application/json")
+                return
+            with open(f, "rb") as fh:
+                self._send(200, fh.read(), "application/json")
+            return
         if path == "/judge":                       # run the LLM judge on ONE trace
             try:
                 s = self._source()
@@ -220,17 +276,27 @@ class Handler(BaseHTTPRequestHandler):
                 if not t:
                     self._send(404, json.dumps({"error": "no such trace"}), "application/json")
                     return
-                t0 = time.perf_counter()
-                v = judge.judge(t, JUDGE_SCRATCH, engine, model, judge_name)  # tags ignored here
-                ms = (time.perf_counter() - t0) * 1000
-                self._send(200, json.dumps({"trace_id": tid, "verdict": v.get("verdict"),
-                                            "reason": v.get("reason", ""), "ms": ms}), "application/json")
+                v = judge.judge_detailed(t, JUDGE_SCRATCH, engine, model, judge_name)
+                self._send(200, json.dumps({"trace_id": tid, **v}), "application/json")
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)}), "application/json")
             return
         self._send(404, "not found", "text/plain")
 
     def do_POST(self):
+        if urlparse(self.path).path == "/runs":        # save a finished mega-eval run
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(n) or "{}")
+                body["saved"] = avana.now()
+                os.makedirs(RUNS, exist_ok=True)
+                rid = time.strftime("%Y%m%d-%H%M%S") + "-" + (body.get("judge") or "judge")
+                with open(os.path.join(RUNS, rid + ".json"), "w") as f:
+                    json.dump(body, f, indent=1)
+                self._send(200, json.dumps({"ok": True, "id": rid}), "application/json")
+            except Exception as e:
+                self._send(500, json.dumps({"ok": False, "error": str(e)}), "application/json")
+            return
         if urlparse(self.path).path != "/annotate":
             self._send(404, "not found", "text/plain")
             return

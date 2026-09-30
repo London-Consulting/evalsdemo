@@ -78,13 +78,13 @@ rubric, so each judge also has a question-set form in `LAYA_QUESTIONS` (`judge.p
 ```bash
 # 1. Start Laya (separate repo; see /Users/elise/Repos/AISummit/laya/LOCAL_README.md)
 cd /Users/elise/Repos/AISummit/laya && LAYA_REVISION=reviewed .venv/bin/python examples/server.py --device mps
-# 2. Judge with it (CLI), or pick "Laya · local (System 1)" in the viewer's AI dropdown
+# 2. Judge with it (CLI), or tick "Laya" in the viewer's Judge eval
 python3 tools/judge.py --dir ../eval-traces --engine laya
 python3 tools/judge.py --dir ../eval-traces --engine laya --judge tone
 ```
-`LAYA_URL` overrides the server address (default `http://127.0.0.1:8000`). The dropdown only
-offers Laya while its server answers `/health`. Every engine now reports per-trace and total time
-(CLI and the Judge-eval grid).
+`LAYA_URL` overrides the server address (default `http://127.0.0.1:8000`). The viewer only
+offers Laya while its server answers `/health`. Every engine reports per-trace and total time and
+estimated cost (CLI and the Judge eval).
 
 **Measured on the 20-trace dataset (safety judge, 2026-09-30, Apple GPU):**
 
@@ -101,9 +101,46 @@ is flagged as an "improper payout"). No threshold or checkpoint separates good t
 ones: the in-sample best (0.15) reaches only 14/20 by overfitting. Raw agreement % hides all of
 this — read the reasons, and compare against the dumb baseline.
 
+## The mega judge eval (every engine side by side)
+Click **⚖ Judge eval** in the viewer (source: **Eval dataset**). Tick engines, press **▶ Run
+selected**, and every engine judges the same 20 gold traces:
+
+- **Scoreboard** (one column per engine): agreement with gold, **vs always-fail** (the dumb
+  baseline: 0 or less means no better than guessing), missed fails, false alarms, total time,
+  median time per trace, tokens, estimated cost for the run and **per 1M traces**. Hover any
+  row name for exactly how it's calculated.
+- **Grid** (one row per trace): ✓/✗ against gold, F/P and the time. Hover for the reason.
+- **Click any cell** to see **exactly what that engine was sent and what it returned**. It works
+  before a run too ("what it would be sent"). The Jev key is always masked.
+- **Runs are saved** to `avana-live/runs/` (git-ignored). Pick one under **Replay** to show it
+  again without re-running (clearly labeled as a replay). Pre-bake the slow engines before a talk.
+
+| Engine | Kind | Needs | Cost basis (list prices as of 2026-09-28, same as PawPal) |
+|---|---|---|---|
+| Always fail | baseline, no model | — | $0 |
+| Laya | System 1 · local | Laya server (above) | $0, runs on this laptop |
+| Jev | System 1 · cloud | `TYPESAFE_API_KEY` in `avana-live/.env` | $0.042 per 1M input tokens, output free |
+| nimble, tev1 | System 1 · local (Ollama `/v1/systemone`) | a recent Ollama | $0 |
+| Claude Sonnet 5 / Opus 5.5 / Fable 5.1 | LLM · cloud | `claude` CLI logged in to **Max** | API-equivalent estimate ($2/$10, $4/$20, $10/$50 per 1M in/out); you pay via Max |
+| Any other Ollama model | LLM · local | `ollama serve` | $0 |
+
+**Fairness rules:** all four System 1 engines (Laya, Jev, nimble, tev1) get the **identical**
+yes/no questions (`LAYA_QUESTIONS`) and the same 0.5 threshold; all LLMs get the identical prose
+rubric. Laya and the Ollama models share this Mac's GPU, so they run in one local lane, one request
+at a time, Laya first; running them together slowed Laya from ~30 ms to ~5 s per trace and can crash
+its Metal backend. Cloud engines run in parallel.
+
+**Jev key:** put `TYPESAFE_API_KEY=...` in `avana-live/.env` (git-ignored, `chmod 600`), then
+restart `serve.py`. The key is only read by the server and never sent to the browser.
+
+**Claude on Max:** Claude runs through `claude -p` with API-key env vars stripped, so your Max
+login is used (same as PawPal). The earlier build notes say headless `claude -p` may bill from a
+separate pay-per-use pool; check https://claude.ai/settings/usage after a run.
+
 ### Tests
-`python3 tools/test_judge.py` covers judge selection, the default, verdict parsing, the Laya engine, and the
-`--judge` CLI flag (stdlib `unittest`; the LLM call is the only thing stubbed).
+`python3 tools/test_judge.py` covers judge selection, the default, verdict parsing, the Laya, Jev,
+Ollama System 1 and baseline engines, the cost maths, and the `--judge` CLI flag (stdlib
+`unittest`; only HTTP and the Claude CLI are stubbed).
 
 ### Judging on its own (the SessionEnd hook)
 You don't have to run the judge by hand. A `SessionEnd` hook (`hooks/judge_session.sh`,

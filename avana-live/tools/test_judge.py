@@ -153,5 +153,70 @@ class LayaEngine(unittest.TestCase):
                 judge.judge(SAMPLE_TRACE, "/tmp", engine="laya")
 
 
+class MegaEvalEngines(unittest.TestCase):
+    """Jev / Ollama System 1 / baseline and the cost maths. Only HTTP and the CLI are stubbed."""
+
+    def _fake_system1(self, seen, prob=0.9, usage=None):
+        def fake_urlopen(req, timeout=None):
+            seen["url"], seen["body"] = req.full_url, json.loads(req.data)
+            seen["auth"] = req.get_header("Authorization")
+            answers = {q: {"type": "noul", "noul": prob} for q in seen["body"]["questions"]}
+            return io.BytesIO(json.dumps({"answers": answers, "usage": usage or {}}).encode())
+        return fake_urlopen
+
+    def test_jev_gets_the_same_questions_as_laya_plus_model_and_key(self):
+        seen = {}
+        with mock.patch.dict(os.environ, {"TYPESAFE_API_KEY": "k123"}), \
+                mock.patch("urllib.request.urlopen", self._fake_system1(seen)):
+            judge.judge(SAMPLE_TRACE, "/tmp", engine="jev")
+        laya_req = judge.build_request(SAMPLE_TRACE, "laya")
+        self.assertEqual(seen["url"], judge.JEV_URL)
+        self.assertEqual(seen["body"]["questions"], laya_req["body"]["questions"])
+        self.assertEqual(seen["body"]["model"], judge.JEV_MODEL)
+        self.assertEqual(seen["auth"], "Bearer k123")
+
+    def test_jev_request_shown_in_the_viewer_masks_the_key(self):
+        with mock.patch.dict(os.environ, {"TYPESAFE_API_KEY": "k123"}):
+            shown = json.dumps(judge.build_request(SAMPLE_TRACE, "jev"))
+        self.assertNotIn("k123", shown)
+
+    def test_jev_without_a_key_is_a_readable_error(self):
+        with mock.patch.dict(os.environ, {"TYPESAFE_API_KEY": ""}):
+            with self.assertRaisesRegex(RuntimeError, "No Jev key"):
+                judge.judge(SAMPLE_TRACE, "/tmp", engine="jev")
+
+    def test_jev_cost_counts_input_tokens_only(self):
+        seen = {}
+        with mock.patch.dict(os.environ, {"TYPESAFE_API_KEY": "k"}), \
+                mock.patch("urllib.request.urlopen",
+                           self._fake_system1(seen, usage={"input_tokens": 1_000_000, "output_tokens": 500})):
+            d = judge.judge_detailed(SAMPLE_TRACE, "/tmp", engine="jev")
+        self.assertAlmostEqual(d["cost_usd"], judge.JEV_PRICE_IN)
+
+    def test_ollama_system1_models_use_systemone_with_the_same_questions(self):
+        seen = {}
+        with mock.patch("urllib.request.urlopen", self._fake_system1(seen, prob=0.1)):
+            v = judge.judge(SAMPLE_TRACE, "/tmp", engine="ollama-s1", model="nimble:9b")
+        self.assertTrue(seen["url"].endswith("/v1/systemone"))
+        self.assertEqual(seen["body"]["model"], "nimble:9b")
+        self.assertEqual(seen["body"]["questions"], judge.build_request(SAMPLE_TRACE, "laya")["body"]["questions"])
+        self.assertEqual(v["verdict"], "pass")
+        self.assertTrue(judge.is_ollama_system1("tev1:4b"))
+        self.assertFalse(judge.is_ollama_system1("qwen3:32b"))
+
+    def test_baseline_always_fails_and_costs_nothing(self):
+        d = judge.judge_detailed(SAMPLE_TRACE, "/tmp", engine="baseline")
+        self.assertEqual((d["verdict"], d["cost_usd"], d["tokens_in"]), ("fail", 0.0, 0))
+
+    def test_claude_cost_is_tokens_times_list_price(self):
+        def fake_claude(prompt, model, scratch, rubric):
+            return {"text": '{"verdict": "pass", "reason": "ok"}', "tokens_in": 1000, "tokens_out": 100, "raw": ""}
+        with mock.patch.object(judge, "_claude", fake_claude):
+            d = judge.judge_detailed(SAMPLE_TRACE, "/tmp", engine="claude", model="claude-opus-5-5")
+        _, pin, pout = judge.CLAUDE_MODELS["claude-opus-5-5"]
+        self.assertAlmostEqual(d["cost_usd"], (1000 * pin + 100 * pout) / 1e6)
+        self.assertEqual(judge.cost_usd("ollama", "qwen3:32b", 10**6, 10**6), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
