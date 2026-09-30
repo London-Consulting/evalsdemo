@@ -74,7 +74,7 @@ Claude and Ollama read a prose rubric and write back a JSON verdict. Laya genera
 
 ---
 
-# Iteration 2: the mega judge eval (draft, awaiting approval, 2026-09-30)
+# Iteration 2: the mega judge eval (approved 2026-09-30)
 
 Same branch (`add-laya-judge`, PR #2). It borrows the engine lineup, Max-plan Claude calls and price basis from the PawPal head-to-head (`/Users/elise/Repos/AISummit/laya-demo`), which Elise already demos, so both demos tell the same story with the same numbers.
 
@@ -116,10 +116,12 @@ Changing the gold labels or rubrics; new Python dependencies (stdlib only); runn
 - **Big Ollama models** can take minutes per run; the same replay approach applies.
 
 ## 15. Acceptance criteria
-- [ ] One click runs any mix of Laya, Jev, Claude ×3, Ollama models and the baseline on 20 traces, and fills a compact grid plus the scoreboard.
-- [ ] Every scoreboard number has a hover showing how it was calculated.
-- [ ] The "what it sees" view shows the exact request and response for any trace × engine.
-- [ ] Runs save and replay.
-- [ ] The Jev key never leaves the server; `.env` is git-ignored.
-- [ ] Tests cover the Jev engine, cost maths, and the baseline; all tests pass.
-- [ ] README results table updated with a full measured run.
+- [x] One click runs any mix of Laya, Jev, Claude ×3, Ollama models and the baseline on 20 traces, and fills a compact grid plus the scoreboard.
+- [x] Every scoreboard number has a hover showing how it was calculated.
+- [x] The "what it sees" view shows the exact request and response for any trace × engine.
+- [x] Runs save and replay.
+- [x] The Jev key never leaves the server; `.env` is git-ignored.
+- [x] Tests cover the Jev engine, cost maths, and the baseline; all tests pass.
+- [x] README results table updated with a full measured run.
+
+*Build notes (2026-09-30):* runs execute server-side (`POST /mega`) because the browser's ~6-connection limit distorted timings; Laya shares the local GPU lane with Ollama (concurrent requests crashed its Metal backend once). `nimble` and `tev1` are wired in (`ollama-s1` engine, same yes/no payload) but need a newer Ollama than 0.34.4 to download. Measured results are in `avana-live/README.md`.

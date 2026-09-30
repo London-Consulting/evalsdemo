@@ -218,5 +218,39 @@ class MegaEvalEngines(unittest.TestCase):
         self.assertEqual(judge.cost_usd("ollama", "qwen3:32b", 10**6, 10**6), 0.0)
 
 
+class MegaRunner(unittest.TestCase):
+    """The server-side mega eval runner: runs every engine over every trace, times each engine,
+    and saves the run. Uses the no-model baseline so nothing external is called."""
+
+    def test_runs_all_traces_times_each_engine_and_saves(self):
+        import importlib.util, tempfile, time
+        spec = importlib.util.spec_from_file_location("serve", os.path.join(TOOLS, "serve.py"))
+        serve = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(serve)
+        with tempfile.TemporaryDirectory() as runs:
+            serve.RUNS = runs
+            src = {"id": "eval-traces", "dir": EVAL_TRACES}
+            jid = serve.start_mega(src, "safety", [{"engine": "baseline", "model": "", "label": "Always fail"}])
+            for _ in range(100):
+                st = serve.mega_status(jid)
+                if st["finished"]:
+                    break
+                time.sleep(0.05)
+            self.assertTrue(st["finished"])
+            self.assertEqual(st["done"], st["total"])
+            self.assertEqual(len(st["results"]["baseline|"]), st["total"])
+            self.assertIn("wall_ms", st["timing"]["baseline|"])
+            self.assertTrue(os.path.exists(os.path.join(runs, st["saved_id"] + ".json")))
+
+    def test_local_engines_share_one_lane_with_laya_first(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("serve", os.path.join(TOOLS, "serve.py"))
+        serve = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(serve)
+        self.assertTrue(serve._is_local({"engine": "laya"}))
+        self.assertTrue(serve._is_local({"engine": "ollama-s1"}))
+        self.assertFalse(serve._is_local({"engine": "jev"}))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

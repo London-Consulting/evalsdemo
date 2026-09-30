@@ -451,58 +451,39 @@
       .catch(function(){ fill(null); });
   }
 
-  // Run every selected engine. Cloud engines get their own lanes (Jev 8, each Claude model 4
-  // in parallel); Laya and ALL Ollama models share one local lane, one request at a time.
+  // Run every selected engine. The run happens on the SERVER (POST /mega) and this page just
+  // polls for progress: a browser allows only ~6 connections per site, so running ~20 judge
+  // calls from here would queue them inside Chrome and distort every engine's time.
+  // Server lanes: Jev 8 and each Claude model 4 in parallel; Laya and ALL Ollama models share
+  // one local lane, one call at a time, Laya first (they share this Mac's GPU).
   var RUNNING = {};
   function runMega(){
-    var C = cols().slice().sort(function(a, b){ return (a.engine==='laya' ? 0 : 1) - (b.engine==='laya' ? 0 : 1); });
-    if(!C.length) return;
+    var C = cols(); if(!C.length) return;
     var btn = document.getElementById('runEval'), status = document.getElementById('evalStatus');
     var judgeName = (document.getElementById('judgeSel')||{}).value || 'safety';
     REPLAY = null; var rs = document.getElementById('runSel'); if(rs) rs.value = '';
     RESULTS = {}; TIMING = {}; RUNNING = {}; drawAll();
     btn.disabled = true; btn.textContent = 'Running…';
-    var t0 = performance.now(), lanes = {}, pending = 0;
-    C.forEach(function(e){
-      // Laya + every Ollama model share ONE local lane, one request at a time: they all use this
-      // Mac's GPU, so running them together slows each other down (unfair timing) and can crash
-      // Laya's Metal backend. Laya is queued first. Cloud engines (Jev, Claude) run in parallel.
-      var local = e.engine === 'laya' || e.engine.indexOf('ollama') === 0;
-      var lane = local ? 'local' : ekey(e);
-      var conc = local ? 1 : ({jev:8, claude:4, baseline:20}[e.engine] || 4);
-      lanes[lane] = lanes[lane] || {conc: conc, queue: []};
-      T.forEach(function(tr){ lanes[lane].queue.push({e:e, tr:tr}); pending++; });
-    });
-    function tick(){ status.textContent = (C.length*T.length - pending) + '/' + (C.length*T.length) + ' judged · ' + ((performance.now()-t0)/1000).toFixed(1) + ' s'; }
-    function finishOne(){
-      pending--; tick(); drawAll();
-      if(pending === 0){
-        btn.disabled = false; btn.textContent = '▶ Re-run selected';
-        status.textContent = 'done in ' + ((performance.now()-t0)/1000).toFixed(1) + ' s · saving…';
-        fetch('/runs', {method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({judge: judgeName, source: currentSource, engines: C, results: RESULTS, timing: TIMING})})
-          .then(function(r){ return r.json(); }).then(function(d){ status.textContent = 'done in ' + ((performance.now()-t0)/1000).toFixed(1) + ' s · saved as ' + d.id; populateRuns(); })
-          .catch(function(){ status.textContent += ' (not saved)'; });
-      }
+    fetch('/mega', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({judge: judgeName, source: currentSource, engines: C})})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(!d.ok) throw new Error(d.error || 'could not start'); poll(d.id); })
+      .catch(function(err){ status.textContent = 'error: ' + err; btn.disabled = false; btn.textContent = '▶ Run selected'; });
+    function poll(id){
+      fetch('/mega?id=' + encodeURIComponent(id), {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(st){
+        RESULTS = st.results || {}; TIMING = st.timing || {};
+        RUNNING = {}; (st.running||[]).forEach(function(k){ RUNNING[k] = 1; });
+        drawAll();
+        var secs = (st.elapsed_ms/1000).toFixed(1);
+        if(st.finished){
+          btn.disabled = false; btn.textContent = '▶ Re-run selected';
+          status.textContent = 'done in ' + secs + ' s · saved as ' + st.saved_id; populateRuns();
+        } else {
+          status.textContent = st.done + '/' + st.total + ' judged · ' + secs + ' s';
+          setTimeout(function(){ poll(id); }, 700);
+        }
+      }).catch(function(){ setTimeout(function(){ poll(id); }, 1500); });
     }
-    function worker(lane){
-      var job = lanes[lane].queue.shift(); if(!job) return;
-      var e = job.e, tr = job.tr, k = ekey(e);
-      TIMING[k] = TIMING[k] || {start: performance.now()};
-      RUNNING[k+'/'+tr.trace_id] = 1; drawGrid();
-      var u = '/judge?' + (currentSource ? 'source=' + encodeURIComponent(currentSource) + '&' : '') + 'trace=' + encodeURIComponent(tr.trace_id)
-            + '&engine=' + encodeURIComponent(e.engine) + (e.model ? '&model=' + encodeURIComponent(e.model) : '') + '&judge=' + encodeURIComponent(judgeName);
-      fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
-        .then(function(res){ (RESULTS[k] = RESULTS[k] || {})[tr.trace_id] = res.error ? {error: res.error} : res; })
-        .catch(function(err){ (RESULTS[k] = RESULTS[k] || {})[tr.trace_id] = {error: String(err)}; })
-        .then(function(){
-          delete RUNNING[k+'/'+tr.trace_id];
-          TIMING[k].wall_ms = performance.now() - TIMING[k].start;
-          finishOne(); worker(lane);
-        });
-    }
-    tick();
-    Object.keys(lanes).forEach(function(l){ for(var i=0;i<lanes[l].conc;i++) worker(l); });
   }
 
   // In patient view, hide everything that isn't the conversation itself.

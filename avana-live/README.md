@@ -86,20 +86,7 @@ python3 tools/judge.py --dir ../eval-traces --engine laya --judge tone
 offers Laya while its server answers `/health`. Every engine reports per-trace and total time and
 estimated cost (CLI and the Judge eval).
 
-**Measured on the 20-trace dataset (safety judge, 2026-09-30, Apple GPU):**
-
-| Engine | Agreement with gold | Time |
-|---|---|---|
-| Claude (`claude-sonnet-4-6`) | ~19/20 (~95%, earlier measurement) | seconds per trace |
-| Laya (`multilingual`, threshold 0.5) | **12/20 (60%)** | **2.2 s total, ~30–100 ms per trace** |
-| "Always say fail" (no model at all) | 12/20 (60%) | 0 s |
-
-The lesson: Laya is ~100× faster and free, but on this rubric it **ties a judge that always says
-fail**. Its "invented facts" question fires on almost every trace (it can't check a claim against
-the tool results), and some right verdicts come for the wrong reason (the medication-dose trace
-is flagged as an "improper payout"). No threshold or checkpoint separates good traces from bad
-ones: the in-sample best (0.15) reaches only 14/20 by overfitting. Raw agreement % hides all of
-this — read the reasons, and compare against the dumb baseline.
+Laya's full results against every other engine are in the mega judge eval below.
 
 ## The mega judge eval (every engine side by side)
 Click **⚖ Judge eval** in the viewer (source: **Eval dataset**). Tick engines, press **▶ Run
@@ -128,7 +115,9 @@ selected**, and every engine judges the same 20 gold traces:
 yes/no questions (`LAYA_QUESTIONS`) and the same 0.5 threshold; all LLMs get the identical prose
 rubric. Laya and the Ollama models share this Mac's GPU, so they run in one local lane, one request
 at a time, Laya first; running them together slowed Laya from ~30 ms to ~5 s per trace and can crash
-its Metal backend. Cloud engines run in parallel.
+its Metal backend. Cloud engines run in parallel (Jev 8 at a time, each Claude model 4). The whole
+run happens inside `serve.py`, not the browser: a browser allows only ~6 connections per site, so
+driving ~20 calls from the page made fast engines wait behind slow ones and inflated their times.
 
 **Jev key:** put `TYPESAFE_API_KEY=...` in `avana-live/.env` (git-ignored, `chmod 600`), then
 restart `serve.py`. The key is only read by the server and never sent to the browser.
@@ -136,6 +125,37 @@ restart `serve.py`. The key is only read by the server and never sent to the bro
 **Claude on Max:** Claude runs through `claude -p` with API-key env vars stripped, so your Max
 login is used (same as PawPal). The earlier build notes say headless `claude -p` may bill from a
 separate pay-per-use pool; check https://claude.ai/settings/usage after a run.
+
+### Measured results (safety judge, 20 gold traces, 2026-09-30, M5 Max / 128 GB)
+Saved as run `20260930-122659-safety` (pick it under **Replay**). Gold: 12 fail / 8 pass.
+
+| Engine | Agreement | vs always-fail | Missed fails | False alarms | Total time | Median / trace | Est. cost / run | Per 1M traces |
+|---|---|---|---|---|---|---|---|---|
+| Always fail | 12/20 | 0 | 0 | 8 | 0.1 s | 0 ms | $0 | $0 |
+| Laya (local) | 12/20 | 0 | 2 | 6 | 2.7 s | 92 ms | $0 | $0 |
+| Jev (cloud) | 14/20 | +2 | 1 | 5 | 1.1 s | 323 ms | $0.0005 | $27 |
+| Claude Sonnet 5 | **17/20** | **+5** | 0 | 3 | 20.0 s | 3.9 s | $0.045 | $2,247 |
+| Claude Opus 5.5 | 13/20 | +1 | 1 | 6 | 30.1 s | 4.2 s | $0.119 | $5,946 |
+| Claude Fable 5.1 | 13/20 | +1 | 1 | 6 | 37.8 s | 5.4 s | $0.349 | $17,442 |
+| gemma3 (local) | **17/20** | **+5** | 3 | 0 | 15.1 s | 592 ms | $0 | $0 |
+| llama3.1:8b (local) | 15/20 | +3 | 0 | 5 | 25.7 s | 467 ms | $0 | $0 |
+| llama3.3:70b (local) | 16/20 | +4 | 0 | 4 | 115 s | 5.1 s | $0 | $0 |
+| qwen3:32b (local) | 16/20 | +4 | 1 | 3 | 499 s | 23.3 s | $0 | $0 |
+
+Claude costs are API-equivalent estimates; the run itself went through Max. Local = $0 excluding electricity.
+
+**What it shows:**
+- **System 1 is fast and nearly free, not accurate on subtle policy:** Laya ties the always-fail
+  baseline; Jev beats it by 2 and gets the obvious ones right (payouts, medication dose at 0.98).
+- **The strongest model doesn't win.** Opus 5.5 and Fable 5.1 score lower than Sonnet 5 because
+  they apply the rubric's *newer* rules to the letter ("logged without a Date of Service", "went
+  to billing before a CSR"). The gold labels (2026-06-23) predate those rules (rubric rewrite,
+  2026-06-24). That's **criteria drift**: the judge and the labels disagree about what "good"
+  means. Relabel gold, or relax the rubric, before trusting any score.
+- **gemma3 ties Sonnet at 17/20 but misses 3 real failures** (0 false alarms): a tie in agreement
+  hides opposite error types. Read misses and false alarms, not just agreement.
+- **Cost spans ~650×** per 1M cloud-judged traces (Jev $27 vs Fable $17,442), and local engines are
+  $0, while the top scores are Sonnet 5 and a free local gemma3.
 
 ### Tests
 `python3 tools/test_judge.py` covers judge selection, the default, verdict parsing, the Laya, Jev,
