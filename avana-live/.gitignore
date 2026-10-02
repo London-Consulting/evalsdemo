@@ -1,0 +1,3 @@
+# local secrets (Jev key) and saved mega-eval runs — never commit
+.env
+runs/
